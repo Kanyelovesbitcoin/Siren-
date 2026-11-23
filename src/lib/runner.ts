@@ -5,7 +5,9 @@ import { checkTargetUrl } from "./safety";
 import { extractReply, renderBody, templateUsesHistory, type ChatMessage } from "./template";
 import { deterministicChecks, heuristicEvaluate, judgeEvaluate, type Evaluation } from "./judge";
 import { buildFixPrompt } from "./remediation";
+import { runAttackCampaign, syntheticTest } from "./attacker";
 import type {
+  AttackConfig,
   AuditEvent,
   Playbook,
   PlaybookTest,
@@ -14,6 +16,8 @@ import type {
   TestResult,
   TurnRecord,
 } from "./types";
+
+const MAX_ATTACK_TURNS = 8;
 
 const MAX_BURST = 50;
 const MAX_CONCURRENCY = 10;
@@ -264,14 +268,11 @@ export async function runAudit(opts: {
   testIds: string[];
   target: TargetConfig;
   judge: ProviderConfig;
+  attack?: AttackConfig;
   emit: (e: AuditEvent) => void;
   signal: AbortSignal;
 }) {
   const { playbooks, target, judge, emit, signal } = opts;
-  const wanted = new Set(opts.testIds);
-  const queue: { pb: Playbook; test: PlaybookTest }[] = [];
-  for (const pb of playbooks) for (const test of pb.tests) if (wanted.has(test.id)) queue.push({ pb, test });
-
   const summary = { pass: 0, warn: 0, fail: 0, error: 0, durationMs: 0 };
   const started = Date.now();
   const warned = new Set<string>();
@@ -280,6 +281,19 @@ export async function runAudit(opts: {
     warned.add(key);
     emit({ type: "log", level: "warn", message });
   };
+
+  // ── Attacker mode: a model drives one adaptive campaign per selected category ──
+  if (opts.attack?.enabled) {
+    await runAttackerMode({ ...opts, summary, warnOnce });
+    summary.durationMs = Date.now() - started;
+    emit({ type: "done", summary, aborted: signal.aborted });
+    return;
+  }
+
+  const wanted = new Set(opts.testIds);
+  const queue: { pb: Playbook; test: PlaybookTest }[] = [];
+  for (const pb of playbooks) for (const test of pb.tests) if (wanted.has(test.id)) queue.push({ pb, test });
+
   const useJudge = judge.mode === "judge" && !!judge.model?.trim();
   if (!useJudge) {
     emit({
@@ -361,5 +375,104 @@ export async function runAudit(opts: {
 
   summary.durationMs = Date.now() - started;
   emit({ type: "done", summary, aborted: signal.aborted });
+}
+
+async function runAttackerMode(opts: {
+  playbooks: Playbook[];
+  testIds: string[];
+  target: TargetConfig;
+  judge: ProviderConfig;
+  attack?: AttackConfig;
+  emit: (e: AuditEvent) => void;
+  signal: AbortSignal;
+  summary: { pass: number; warn: number; fail: number; error: number; durationMs: number };
+  warnOnce: (key: string, message: string) => void;
+}) {
+  const { playbooks, target, judge, emit, signal, summary, warnOnce } = opts;
+  const maxTurns = Math.min(Math.max(2, opts.attack?.maxTurns ?? 5), MAX_ATTACK_TURNS);
+
+  if (judge.mode !== "judge" || !judge.model?.trim()) {
+    emit({ type: "log", level: "error", message: "Attacker mode needs a connected model — it generates the attacks. Pick a model or turn attacker mode off." });
+    emit({ type: "start", total: 0, startedAt: new Date().toISOString() });
+    return;
+  }
+
+  // One campaign per selected category that has an attacker objective.
+  const wanted = new Set(opts.testIds);
+  const campaigns: Playbook[] = [];
+  for (const pb of playbooks) {
+    if (!pb.tests.some((t) => wanted.has(t.id))) continue;
+    if (!pb.objective?.trim()) {
+      warnOnce(`noobj:${pb.id}`, `Skipping "${pb.title}" in attacker mode — it's a load/measurement test, not a conversation. Run it in standard mode.`);
+      continue;
+    }
+    campaigns.push(pb);
+  }
+
+  emit({ type: "start", total: campaigns.length, startedAt: new Date().toISOString() });
+  if (campaigns.length === 0) {
+    emit({ type: "log", level: "warn", message: "No conversational categories selected for attacker mode." });
+    return;
+  }
+  const host = checkTargetUrl(target.url).url?.host ?? "your localhost target";
+  emit({
+    type: "log",
+    level: "info",
+    message: `Attacker mode: ${judge.model} will drive up to ${maxTurns} adaptive turns per category, firing only at ${host}.`,
+  });
+
+  const stateless = !templateUsesHistory(target.bodyTemplate);
+  if (stateless) {
+    warnOnce("stateless-attack", "Your body template doesn't use {{messages}}, so the app sees each attack with no memory of earlier turns. Use {{messages}} for a true multi-turn attack.");
+  }
+
+  for (let i = 0; i < campaigns.length; i++) {
+    if (signal.aborted) break;
+    const pb = campaigns[i];
+    const testId = `attack:${pb.id}`;
+    emit({ type: "test-start", testId, playbookId: pb.id, testName: `${pb.shortTitle} — adaptive attack`, index: i });
+    const t0 = Date.now();
+
+    const campaign = await runAttackCampaign({
+      model: judge,
+      playbook: pb,
+      target,
+      maxTurns,
+      signal,
+      fire: async (prompt, history) => {
+        const call = await callTarget(target, prompt, history, signal);
+        return { text: call.text, status: call.status, latencyMs: call.latencyMs, error: call.error };
+      },
+      onTurn: (turn) => emit({ type: "turn", testId, turn }),
+    });
+
+    if (signal.aborted && campaign.turns.length === 0) break;
+
+    const synthetic = syntheticTest(pb, campaign.turns);
+    const result: TestResult = {
+      testId,
+      playbookId: pb.id,
+      playbookTitle: pb.title,
+      owasp: pb.owasp,
+      testName: `${pb.shortTitle} — adaptive attack`,
+      severity: synthetic.severity,
+      kind: "prompt",
+      verdict: campaign.verdict,
+      reason: campaign.reason,
+      decidedBy: campaign.decidedBy,
+      turns: campaign.turns,
+      totalLatencyMs: Date.now() - t0,
+      stats: {
+        "attack turns": campaign.turns.length,
+        ...(campaign.brokeThroughOn ? { "broke through on turn": campaign.brokeThroughOn } : {}),
+      },
+      weakness: campaign.weakness,
+    };
+    if (result.verdict === "fail" || result.verdict === "warn") {
+      result.fixPrompt = buildFixPrompt(pb, synthetic, target, result);
+    }
+    summary[result.verdict]++;
+    emit({ type: "result", result });
+  }
 }
 

@@ -39,7 +39,15 @@ export async function POST(request: Request) {
         }
       };
       try {
-        await runAudit({ playbooks, testIds: body.testIds, target: body.target, judge: body.judge, emit, signal: controller.signal });
+        await runAudit({
+          playbooks,
+          testIds: body.testIds,
+          target: body.target,
+          judge: body.judge,
+          attack: body.attack,
+          emit,
+          signal: controller.signal,
+        });
       } catch (e) {
         emit({ type: "log", level: "error", message: (e as Error).message });
       } finally {

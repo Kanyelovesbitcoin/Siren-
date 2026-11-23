@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Clock, Sparkles, TriangleAlert } from "lucide-react";
+import { ChevronDown, Clock, Crosshair, Sparkles, TriangleAlert } from "lucide-react";
 import { Chip, CopyButton, SeverityChip, VerdictBadge, cx } from "./ui";
 import type { TestResult, TurnRecord } from "@/lib/types";
 
@@ -31,6 +31,14 @@ function TurnRow({ turn, total }: { turn: TurnRecord; total: number }) {
           <span className="size-1.5 rounded-full bg-gold/80" />
           Siren{total > 1 ? ` · turn ${turn.index + 1}` : ""}
         </p>
+        {turn.attackerThought && (
+          <p className="mb-2 flex gap-1.5 rounded-md border border-gold/20 bg-gold/[0.06] px-2 py-1.5 text-[11.5px] leading-relaxed text-gold/90">
+            <Crosshair className="mt-px size-3 shrink-0" />
+            <span>
+              <span className="font-semibold">Plan:</span> {turn.attackerThought}
+            </span>
+          </p>
+        )}
         <p className="max-h-56 overflow-auto font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-ink-dim scroll-quiet">
           {turn.displayPrompt}
         </p>
@@ -56,6 +64,11 @@ function TurnRow({ turn, total }: { turn: TurnRecord; total: number }) {
         ) : (
           <p className="max-h-56 overflow-auto text-[13px] leading-relaxed whitespace-pre-wrap text-ink scroll-quiet">
             {turn.response || <span className="text-muted italic">(empty response)</span>}
+          </p>
+        )}
+        {turn.assessment && (
+          <p className="mt-2 border-t border-line pt-2 text-[11.5px] leading-relaxed text-muted">
+            <span className="font-semibold text-ink-dim">Read:</span> {turn.assessment}
           </p>
         )}
       </div>

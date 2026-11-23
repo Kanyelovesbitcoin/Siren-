@@ -20,6 +20,7 @@ export default function SuitePanel({
   selected,
   onSelectedChange,
   running,
+  attackerMode,
   canRun,
   blockReason,
   progress,
@@ -32,6 +33,7 @@ export default function SuitePanel({
   selected: Set<string>;
   onSelectedChange: (next: Set<string>) => void;
   running: boolean;
+  attackerMode?: boolean;
   canRun: boolean;
   blockReason?: string;
   progress: { done: number; total: number };
@@ -48,6 +50,9 @@ export default function SuitePanel({
   };
   const allIds = playbooks.flatMap((p) => p.tests.map((t) => t.id));
   const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+  // In attacker mode, each category with an objective and a selected test becomes one campaign.
+  const attackCategories = playbooks.filter((p) => p.objective && p.tests.some((t) => selected.has(t.id)));
+  const runCount = attackerMode ? attackCategories.length : selected.size;
 
   return (
     <Card
@@ -64,6 +69,14 @@ export default function SuitePanel({
         </div>
       }
     >
+      {attackerMode && playbooks.length > 0 && (
+        <div className="mb-4 rounded-xl border border-gold/30 bg-gold/[0.06] p-3 text-[12.5px] leading-relaxed text-ink-dim">
+          <span className="font-semibold text-gold">Attacker mode is on.</span> Each category you select below becomes one adaptive
+          campaign — the model writes its own attacks, so the individual test prompts act as a checklist of which categories to probe.
+          Rate &amp; token limits stay in standard mode.
+        </div>
+      )}
+
       {errors.length > 0 && (
         <div className="mb-4 rounded-xl border border-warn/35 bg-warn/10 p-3 text-xs text-warn">
           <p className="mb-1 font-semibold">Some playbooks failed to load</p>
@@ -175,7 +188,8 @@ export default function SuitePanel({
             disabled={!canRun}
             icon={<Play className="size-4 fill-current" />}
           >
-            Run audit{selected.size ? ` (${selected.size})` : ""}
+            {attackerMode ? "Launch attack" : "Run audit"}
+            {runCount ? ` (${runCount})` : ""}
           </Button>
         )}
         {running && (

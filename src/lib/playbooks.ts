@@ -66,6 +66,8 @@ function validatePlaybook(raw: unknown, file: string): Playbook {
     description: (p.description as string) || "",
     icon: p.icon as string | undefined,
     order: typeof p.order === "number" ? p.order : 999,
+    objective: typeof p.objective === "string" ? p.objective : undefined,
+    attackerHints: Array.isArray(p.attackerHints) ? (p.attackerHints as string[]) : undefined,
     tests,
     source: file,
   };

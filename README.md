@@ -71,6 +71,16 @@ Then in the dashboard, click **"Use the bundled demo target"** and hit **Run aud
 3. **Test suites**: pick tests across the five category tabs and hit **Run audit**. Results stream in live, side-by-side, with latency and a Pass / Warn / Fail badge.
 4. **Fix**: on any Fail or Warn, read **What this means**, then **Copy Fix Prompt** and paste it into Claude Code, Cursor or Copilot. **Export .md** saves the whole report.
 
+### Attacker mode (adaptive red-teaming)
+
+Flip on **Attacker mode** to let a local model generate the attacks instead of running the fixed prompts. For each selected category it runs an **adaptive campaign**: it writes an attack, reads your app's reply, and escalates — switching tactics when refused — until it breaks through or hits the turn cap (2–8, default 5).
+
+- **One model, both jobs.** The model you connect as the judge also writes the attacks and grades each reply, so it's a single local model. An **uncensored** model (e.g. a Dolphin or Hermes variant in LM Studio or Ollama) works best here, because safety-tuned models often refuse to write jailbreak attempts.
+- **Easy to follow.** Every turn shows the attacker's **Plan** ("trying a translation side-channel because direct recall was refused") and its **Read** of the reply, in plain English — so you (or someone in your course) can see exactly how a weakness was found.
+- **Same guardrails.** Attacks still only ever fire at your localhost target, redirects are never followed, and your canary phrases remain an instant-fail tripwire. The Rate & Token category stays in standard mode (it's load testing, not a conversation).
+
+A `fail` here means the attacker broke your app; a `pass` means it resisted every escalation. You don't need MCP for this — it uses the model's normal OpenAI-compatible (LM Studio / OpenRouter) or Ollama API, which Siren already speaks.
+
 ### How verdicts are decided
 
 Each result shows which layer decided it, in this order of authority:
@@ -184,7 +194,8 @@ src/
     safety.ts              Localhost lock + origin checks
     template.ts            {{prompt}}/{{messages}} rendering, JSON path extraction
     providers.ts           Ollama / LM Studio / OpenAI-compatible clients
-    runner.ts              Sequential audit engine (prompt, burst, oversize)
+    runner.ts              Sequential audit engine (prompt, burst, oversize) + attacker mode
+    attacker.ts            Adaptive red-team engine (plan → fire → assess loop)
     judge.ts               Canary → rules → judge → heuristic evaluation
     remediation.ts         Copy Fix Prompt builder
 ```

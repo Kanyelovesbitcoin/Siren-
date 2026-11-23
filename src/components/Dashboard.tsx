@@ -5,12 +5,13 @@ import { Download, Eraser, Lock, Radio, ShieldCheck, TriangleAlert, Info } from 
 import TargetPanel from "./TargetPanel";
 import ProviderPanel from "./ProviderPanel";
 import SuitePanel from "./SuitePanel";
+import AttackerBar from "./AttackerBar";
 import ResultCard, { type LiveTest } from "./ResultCard";
 import { Button, Card, cx } from "./ui";
 import { checkTargetUrl } from "@/lib/safety";
 import { validateTemplate } from "@/lib/template";
 import { PROVIDER_PRESETS } from "@/lib/providers";
-import type { AuditEvent, Playbook, PlaybookLoadError, ProviderConfig, TargetConfig, TestResult } from "@/lib/types";
+import type { AttackConfig, AuditEvent, Playbook, PlaybookLoadError, ProviderConfig, TargetConfig, TestResult } from "@/lib/types";
 
 const STORAGE_KEY = "siren.config.v1";
 
@@ -41,12 +42,14 @@ const DEFAULT_JUDGE: ProviderConfig = {
   mode: "judge",
 };
 
+const DEFAULT_ATTACK: AttackConfig = { enabled: false, maxTurns: 5 };
+
 interface LogLine {
   level: "info" | "warn" | "error";
   message: string;
 }
 
-function loadSaved(): { target: TargetConfig; judge: ProviderConfig; selected?: string[] } | null {
+function loadSaved(): { target: TargetConfig; judge: ProviderConfig; selected?: string[]; attack?: AttackConfig } | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
@@ -83,6 +86,7 @@ export default function Dashboard() {
   const [hydrated, setHydrated] = useState(false);
   const [target, setTarget] = useState<TargetConfig>(DEFAULT_TARGET);
   const [judge, setJudge] = useState<ProviderConfig>(DEFAULT_JUDGE);
+  const [attack, setAttack] = useState<AttackConfig>(DEFAULT_ATTACK);
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
   const [loadErrors, setLoadErrors] = useState<PlaybookLoadError[]>([]);
   const [dir, setDir] = useState("");
@@ -102,6 +106,7 @@ export default function Dashboard() {
     const saved = loadSaved();
     if (saved?.target) setTarget({ ...DEFAULT_TARGET, ...saved.target });
     if (saved?.judge) setJudge({ ...DEFAULT_JUDGE, ...saved.judge, apiKey: "" });
+    if (saved?.attack) setAttack({ ...DEFAULT_ATTACK, ...saved.attack });
     if (saved?.selected) setSelected(new Set(saved.selected));
     setHydrated(true);
   }, []);
@@ -111,11 +116,11 @@ export default function Dashboard() {
     try {
       const { apiKey: _drop, ...judgeSafe } = judge;
       void _drop;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ target, judge: judgeSafe, selected: [...selected] }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ target, judge: judgeSafe, attack, selected: [...selected] }));
     } catch {
       /* storage unavailable */
     }
-  }, [hydrated, target, judge, selected]);
+  }, [hydrated, target, judge, attack, selected]);
 
   const refreshPlaybooks = useCallback(async () => {
     try {
@@ -146,6 +151,7 @@ export default function Dashboard() {
 
   const targetCheck = useMemo(() => checkTargetUrl(target.url), [target.url]);
   const templateError = useMemo(() => validateTemplate(target.bodyTemplate), [target.bodyTemplate]);
+  const hasModel = judge.mode === "judge" && !!judge.model.trim();
   const blockReason = targetCheck.external
     ? "External target blocked by the localhost lock."
     : !targetCheck.ok
@@ -154,7 +160,9 @@ export default function Dashboard() {
         ? "Fix the body template first."
         : selected.size === 0
           ? "Select at least one test."
-          : undefined;
+          : attack.enabled && !hasModel
+            ? "Attacker mode needs a connected model — it generates the attacks."
+            : undefined;
 
   const results = live.map((l) => l.result).filter((r): r is TestResult => !!r);
   const counts = useMemo(() => {
@@ -212,7 +220,7 @@ export default function Dashboard() {
       const res = await fetch("/api/audit", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ target: { ...target, canaries: (target.canaries ?? []).filter(Boolean) }, judge, testIds: ordered }),
+        body: JSON.stringify({ target: { ...target, canaries: (target.canaries ?? []).filter(Boolean) }, judge, testIds: ordered, attack }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {
@@ -290,6 +298,8 @@ export default function Dashboard() {
         </aside>
 
         <div className="min-w-0 space-y-6">
+          <AttackerBar value={attack} onChange={setAttack} modelName={hasModel ? judge.model : null} disabled={running} />
+
           <SuitePanel
             playbooks={playbooks}
             errors={loadErrors}
@@ -297,6 +307,7 @@ export default function Dashboard() {
             selected={selected}
             onSelectedChange={setSelected}
             running={running}
+            attackerMode={attack.enabled}
             canRun={!blockReason && !running}
             blockReason={blockReason}
             progress={progress}

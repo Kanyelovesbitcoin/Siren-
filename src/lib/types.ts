@@ -63,6 +63,10 @@ export interface Playbook {
   description: string;
   icon?: string;
   order?: number;
+  /** Attacker-mode goal: what the adaptive model tries to make the app do. Omit to exclude from attacker mode. */
+  objective?: string;
+  /** Optional tactic nudges handed to the attacker model. */
+  attackerHints?: string[];
   tests: PlaybookTest[];
   /** Filename the playbook was loaded from (set by the loader). */
   source?: string;
@@ -110,6 +114,10 @@ export interface TurnRecord {
   status: number | null;
   latencyMs: number;
   error?: string;
+  /** Attacker mode: the model's plain-English plan for this turn. */
+  attackerThought?: string;
+  /** Attacker mode: the model's plain-English read of the app's reply. */
+  assessment?: string;
 }
 
 export interface TestResult {
@@ -144,8 +152,16 @@ export type AuditEvent =
       aborted?: boolean;
     };
 
+export interface AttackConfig {
+  /** When true, an adaptive model drives each category instead of the fixed playbook turns. */
+  enabled: boolean;
+  /** Max conversation turns the attacker gets per category before giving up. */
+  maxTurns: number;
+}
+
 export interface AuditRequest {
   target: TargetConfig;
   judge: ProviderConfig;
   testIds: string[];
+  attack?: AttackConfig;
 }
