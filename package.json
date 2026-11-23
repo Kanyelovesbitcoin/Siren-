@@ -1,0 +1,48 @@
+{
+  "name": "siren-ai",
+  "version": "0.1.0",
+  "description": "Local-first AI application security & robustness testing bench. Stress-test your localhost AI endpoints against the OWASP Top 10 for LLM Applications.",
+  "bin": {
+    "siren": "bin/siren.js"
+  },
+  "files": [
+    "bin",
+    "playbooks",
+    "examples",
+    "src",
+    "public",
+    ".next",
+    "!.next/cache",
+    "next.config.mjs",
+    "postcss.config.mjs",
+    "tsconfig.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "next dev -H 127.0.0.1 -p 4141",
+    "build": "next build",
+    "start": "next start -H 127.0.0.1 -p 4141",
+    "siren": "node bin/siren.js",
+    "demo:target": "node examples/vulnerable-bot.js",
+    "typecheck": "tsc --noEmit",
+    "validate:playbooks": "node bin/validate-playbooks.js",
+    "prepack": "next build"
+  },
+  "dependencies": {
+    "lucide-react": "1.77.0",
+    "next": "16.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.5",
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tailwindcss": "4.3.5",
+    "typescript": "5.9.3"
+  }
+}

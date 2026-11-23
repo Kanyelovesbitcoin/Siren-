@@ -1,0 +1,25 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# env files (keep .env.example)
+.env
+.env.*
+!.env.example
+
+# siren local data
+.siren/
+reports/
+
+# logs / os
+npm-debug.log*
+*.log
+.DS_Store
+Thumbs.db
+
+# typescript
+*.tsbuildinfo

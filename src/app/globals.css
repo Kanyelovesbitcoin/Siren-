@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+@theme {
+  --color-obsidian: #0b0b0e;
+  --color-charcoal: #141419;
+  --color-charcoal-2: #1a1a21;
+  --color-charcoal-3: #212129;
+  --color-line: #26262f;
+  --color-line-strong: #33333e;
+  --color-ink: #ededf0;
+  --color-ink-dim: #b9b9c4;
+  --color-muted: #84848f;
+  --color-gold: #d4af37;
+  --color-gold-bright: #f0d77f;
+  --color-gold-deep: #9c7a1c;
+  --color-pass: #34d399;
+  --color-warn: #fb923c;
+  --color-fail: #f43f5e;
+  --color-err: #a78bfa;
+
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", Inter, Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-obsidian);
+  color: var(--color-ink);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-image:
+    radial-gradient(1200px 500px at 85% -10%, rgb(212 175 55 / 0.07), transparent 60%),
+    radial-gradient(800px 400px at -10% 110%, rgb(212 175 55 / 0.04), transparent 60%);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: rgb(212 175 55 / 0.35);
+  color: #fff;
+}
+
+/* Liquid-gold primary surface */
+.gold-liquid {
+  background: linear-gradient(135deg, #f6e3a1 0%, #d4af37 38%, #b8912a 70%, #e8c766 100%);
+  background-size: 200% 200%;
+  background-position: 0% 50%;
+  transition: background-position 600ms ease, box-shadow 200ms ease, transform 120ms ease;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.45),
+    0 0 0 1px rgb(212 175 55 / 0.4),
+    0 8px 24px -8px rgb(212 175 55 / 0.45);
+}
+.gold-liquid:hover:not(:disabled) {
+  background-position: 100% 50%;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.55),
+    0 0 0 1px rgb(240 215 127 / 0.6),
+    0 10px 30px -8px rgb(212 175 55 / 0.6);
+}
+.gold-liquid:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.gold-text {
+  background: linear-gradient(120deg, #f6e3a1, #d4af37 45%, #b8912a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Thin, quiet scrollbars inside transcript panes */
+.scroll-quiet {
+  scrollbar-width: thin;
+  scrollbar-color: #33333e transparent;
+}
+.scroll-quiet::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-quiet::-webkit-scrollbar-thumb {
+  background: #33333e;
+  border-radius: 8px;
+}
+
+@keyframes siren-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+.siren-pulse {
+  animation: siren-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .siren-pulse { animation: none; }
+  .gold-liquid { transition: none; }
+}
