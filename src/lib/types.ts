@@ -105,6 +105,8 @@ export interface ProviderConfig {
   mode: "judge" | "heuristic";
 }
 
+export type TurnOutcome = "broke" | "partial" | "held";
+
 export interface TurnRecord {
   index: number;
   prompt: string;
@@ -118,6 +120,12 @@ export interface TurnRecord {
   attackerThought?: string;
   /** Attacker mode: the model's plain-English read of the app's reply. */
   assessment?: string;
+  /** Attacker mode: tactic family used this turn (see tactics.ts). */
+  tactic?: string;
+  /** Attacker mode: how the guardrail did on this attempt. */
+  outcome?: TurnOutcome;
+  /** Attacker mode: the attacker restarted the conversation for this attempt. */
+  freshConversation?: boolean;
 }
 
 export interface TestResult {

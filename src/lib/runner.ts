@@ -17,7 +17,7 @@ import type {
   TurnRecord,
 } from "./types";
 
-const MAX_ATTACK_TURNS = 8;
+const MAX_ATTACK_TURNS = 12;
 
 const MAX_BURST = 50;
 const MAX_CONCURRENCY = 10;
@@ -136,6 +136,9 @@ async function runPromptTest(
     if (call.status !== null && !call.resolved && target.responsePath.trim()) {
       warnOnce("path", `Response path "${target.responsePath}" didn't match the target's JSON — showing the raw body instead.`);
     }
+    if (call.status === 429 && !call.error) {
+      call.error = "Your app rate-limited this request (HTTP 429), so the test couldn't run. Re-run it on its own.";
+    }
     const turn = toTurn(i, prompt, call);
     turns.push(turn);
     raws.push(call.raw);
@@ -168,7 +171,6 @@ async function runBurstTest(test: PlaybookTest, target: TargetConfig, signal: Ab
   const netErr = calls.filter((c) => c.status === null).length;
   const latencies = calls.map((c) => c.latencyMs).sort((a, b) => a - b);
   const p95 = latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.95))] ?? 0;
-  const firstLimited = calls.findIndex((c) => c.status === 429);
 
   const stats = {
     requests: calls.length,
@@ -193,7 +195,7 @@ async function runBurstTest(test: PlaybookTest, target: TargetConfig, signal: Ab
     evaluation = {
       verdict: "pass",
       decidedBy: "rule",
-      reason: `Rate limiting engaged: HTTP 429 returned starting at request #${firstLimited + 1}, with no server errors.`,
+      reason: `Rate limiting engaged: ${limited} of ${calls.length} requests were throttled with HTTP 429, and there were no server errors.`,
     };
   } else {
     evaluation = {
@@ -389,7 +391,7 @@ async function runAttackerMode(opts: {
   warnOnce: (key: string, message: string) => void;
 }) {
   const { playbooks, target, judge, emit, signal, summary, warnOnce } = opts;
-  const maxTurns = Math.min(Math.max(2, opts.attack?.maxTurns ?? 5), MAX_ATTACK_TURNS);
+  const maxTurns = Math.min(Math.max(2, opts.attack?.maxTurns ?? 8), MAX_ATTACK_TURNS);
 
   if (judge.mode !== "judge" || !judge.model?.trim()) {
     emit({ type: "log", level: "error", message: "Attacker mode needs a connected model — it generates the attacks. Pick a model or turn attacker mode off." });
@@ -418,7 +420,7 @@ async function runAttackerMode(opts: {
   emit({
     type: "log",
     level: "info",
-    message: `Attacker mode: ${judge.model} will drive up to ${maxTurns} adaptive turns per category, firing only at ${host}.`,
+    message: `Attacker mode: ${judge.model} gets up to ${maxTurns} attempts per category, rotating through different tactics, and fires only at ${host}.`,
   });
 
   const stateless = !templateUsesHistory(target.bodyTemplate);
@@ -463,8 +465,8 @@ async function runAttackerMode(opts: {
       turns: campaign.turns,
       totalLatencyMs: Date.now() - t0,
       stats: {
-        "attack turns": campaign.turns.length,
-        ...(campaign.brokeThroughOn ? { "broke through on turn": campaign.brokeThroughOn } : {}),
+        ...campaign.stats,
+        ...(campaign.brokeThroughOn ? { "broke on attempt": campaign.brokeThroughOn } : {}),
       },
       weakness: campaign.weakness,
     };

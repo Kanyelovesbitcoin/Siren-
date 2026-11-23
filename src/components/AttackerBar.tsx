@@ -48,7 +48,8 @@ export default function AttackerBar({
           <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
             {on ? (
               <>
-                Your model writes its own attacks and escalates over several turns per category, grading each reply as it goes.
+                Your model rotates through 12 tactic families (role-play, pretexts, encoding, fake system messages…) per category,
+                grading each reply. A guardrail only passes if it holds against all of them.
               </>
             ) : (
               <>Run the fixed playbook prompts. Turn this on to let a model probe adaptively instead.</>
@@ -58,12 +59,12 @@ export default function AttackerBar({
 
         {on && (
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-muted">Max turns</span>
+            <span className="text-[11px] text-muted">Max attempts</span>
             <div className="flex items-center gap-1 rounded-lg border border-line-strong bg-obsidian p-0.5">
               <button
                 aria-label="Fewer turns"
-                disabled={disabled || value.maxTurns <= 2}
-                onClick={() => onChange({ ...value, maxTurns: Math.max(2, value.maxTurns - 1) })}
+                disabled={disabled || value.maxTurns <= 3}
+                onClick={() => onChange({ ...value, maxTurns: Math.max(3, value.maxTurns - 1) })}
                 className="rounded-md p-1 text-ink-dim hover:text-gold disabled:opacity-40"
               >
                 <Minus className="size-3.5" />
@@ -71,8 +72,8 @@ export default function AttackerBar({
               <span className="w-5 text-center font-mono text-sm text-ink tabular-nums">{value.maxTurns}</span>
               <button
                 aria-label="More turns"
-                disabled={disabled || value.maxTurns >= 8}
-                onClick={() => onChange({ ...value, maxTurns: Math.min(8, value.maxTurns + 1) })}
+                disabled={disabled || value.maxTurns >= 12}
+                onClick={() => onChange({ ...value, maxTurns: Math.min(12, value.maxTurns + 1) })}
                 className="rounded-md p-1 text-ink-dim hover:text-gold disabled:opacity-40"
               >
                 <Plus className="size-3.5" />

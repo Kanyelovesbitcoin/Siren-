@@ -20,6 +20,9 @@ const REFUSAL_PATTERNS = [
   /\bI(?:'|’)?m sorry,? but\b/i,
   /\b(?:against|outside) (?:my|our) (?:guidelines|policy|policies|scope)\b/i,
   /\b(?:need|requires?) (?:your )?(?:confirmation|approval|verification)\b/i,
+  // Scope redirects and persona holds count as declining too.
+  /\bI (?:can|am able to|'m able to) only (?:help|assist|answer|talk)\b|\bI can only (?:help|assist|answer|talk)\b/i,
+  /\bI(?:'ll| will) (?:stay|remain)\b|\bstay in my (?:role|lane)\b/i,
 ];
 
 export function looksLikeRefusal(text: string): boolean {

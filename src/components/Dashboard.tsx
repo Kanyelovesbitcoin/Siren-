@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, Eraser, Lock, Radio, ShieldCheck, TriangleAlert, Info } from "lucide-react";
+import { Download, Eraser, Lock, Radio, RefreshCw, ShieldCheck, TriangleAlert, Info } from "lucide-react";
 import TargetPanel from "./TargetPanel";
 import ProviderPanel from "./ProviderPanel";
 import SuitePanel from "./SuitePanel";
@@ -42,7 +42,7 @@ const DEFAULT_JUDGE: ProviderConfig = {
   mode: "judge",
 };
 
-const DEFAULT_ATTACK: AttackConfig = { enabled: false, maxTurns: 5 };
+const DEFAULT_ATTACK: AttackConfig = { enabled: false, maxTurns: 8 };
 
 interface LogLine {
   level: "info" | "warn" | "error";
@@ -99,6 +99,7 @@ export default function Dashboard() {
   const [runError, setRunError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const playbooksRef = useRef<Playbook[]>([]);
+  const rerunRef = useRef(false);
   const feedEndRef = useRef<HTMLDivElement | null>(null);
 
   // Restore saved config (API keys are never persisted).
@@ -170,22 +171,33 @@ export default function Dashboard() {
     results.forEach((r) => c[r.verdict]++);
     return c;
   }, [results]);
+  const failedIds = live.filter((l) => l.result && (l.result.verdict === "fail" || l.result.verdict === "warn" || l.result.verdict === "error")).map((l) => l.testId);
+  const compared = live.filter((l) => l.result && l.previousVerdict);
+  const rank = { pass: 3, warn: 2, fail: 1, error: 0 } as const;
+  const fixedCount = compared.filter((l) => rank[l.result!.verdict] > rank[l.previousVerdict!]).length;
+  const stillCount = compared.filter((l) => l.result!.verdict !== "pass" && rank[l.result!.verdict] <= rank[l.previousVerdict!]).length;
   const graded = counts.pass + counts.warn + counts.fail;
   const score = graded ? Math.round((100 * (counts.pass + counts.warn * 0.5)) / graded) : null;
 
   function handleEvent(e: AuditEvent) {
     switch (e.type) {
       case "start":
-        setProgress({ done: 0, total: e.total });
+        // During a re-attack the total is set up front (it may span two requests).
+        if (!rerunRef.current) setProgress({ done: 0, total: e.total });
         setStartedAt(e.startedAt);
         break;
       case "test-start": {
         const pb = playbooksRef.current.find((p) => p.id === e.playbookId);
-        setLive((prev) => [
-          ...prev,
-          { testId: e.testId, testName: e.testName, playbookTitle: pb?.title ?? "", owasp: pb?.owasp ?? "", turns: [] },
-        ]);
-        requestAnimationFrame(() => feedEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
+        const fresh: LiveTest = { testId: e.testId, testName: e.testName, playbookTitle: pb?.title ?? "", owasp: pb?.owasp ?? "", turns: [] };
+        setLive((prev) => {
+          const i = prev.findIndex((l) => l.testId === e.testId);
+          if (i < 0) return [...prev, fresh];
+          // Re-attack: replace in place and remember the old verdict for the before → after chip.
+          const next = [...prev];
+          next[i] = { ...fresh, previousVerdict: prev[i].result?.verdict ?? prev[i].previousVerdict };
+          return next;
+        });
+        if (!rerunRef.current) requestAnimationFrame(() => feedEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
         break;
       }
       case "turn":
@@ -204,11 +216,40 @@ export default function Dashboard() {
     }
   }
 
+  /** POST one audit request and feed its NDJSON events into the dashboard. */
+  async function streamAudit(testIds: string[], attackCfg: AttackConfig, signal: AbortSignal) {
+    const res = await fetch("/api/audit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ target: { ...target, canaries: (target.canaries ?? []).filter(Boolean) }, judge, testIds, attack: attackCfg }),
+      signal,
+    });
+    if (!res.ok || !res.body) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error ?? `Audit failed with HTTP ${res.status}`);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (line) handleEvent(JSON.parse(line) as AuditEvent);
+      }
+    }
+  }
+
   async function runAudit() {
     if (blockReason) return;
     // Pick up any playbook edits made since the page loaded.
     const pbs = await refreshPlaybooks();
     const ordered = pbs.flatMap((p) => p.tests.map((t) => t.id)).filter((id) => selected.has(id));
+    rerunRef.current = false;
     setLive([]);
     setLogs([]);
     setRunError(null);
@@ -217,35 +258,51 @@ export default function Dashboard() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const res = await fetch("/api/audit", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ target: { ...target, canaries: (target.canaries ?? []).filter(Boolean) }, judge, testIds: ordered, attack }),
-        signal: controller.signal,
-      });
-      if (!res.ok || !res.body) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error ?? `Audit failed with HTTP ${res.status}`);
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let nl: number;
-        while ((nl = buffer.indexOf("\n")) >= 0) {
-          const line = buffer.slice(0, nl).trim();
-          buffer = buffer.slice(nl + 1);
-          if (line) handleEvent(JSON.parse(line) as AuditEvent);
-        }
+      await streamAudit(ordered, attack, controller.signal);
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") setRunError((e as Error).message);
+    } finally {
+      setRunning(false);
+      abortRef.current = null;
+    }
+  }
+
+  /**
+   * Harden & re-attack: re-run only the given results (e.g. everything that failed after
+   * you applied a fix). Results are replaced in place and show a before → after chip.
+   */
+  async function reattack(ids: string[]) {
+    if (!ids.length || running) return;
+    if (!targetCheck.ok || templateError) {
+      setRunError(targetCheck.reason ?? templateError ?? "Fix the target settings first.");
+      return;
+    }
+    const pbs = await refreshPlaybooks();
+    const campaignPbs = new Set(ids.filter((id) => id.startsWith("attack:")).map((id) => id.slice("attack:".length)));
+    const plainIds = ids.filter((id) => !id.startsWith("attack:"));
+    if (campaignPbs.size && !hasModel) {
+      setRunError("Re-attacking an adaptive campaign needs a connected model.");
+      return;
+    }
+    rerunRef.current = true;
+    setLogs([]);
+    setRunError(null);
+    setProgress({ done: 0, total: ids.length });
+    setRunning(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      if (plainIds.length) await streamAudit(plainIds, { ...attack, enabled: false }, controller.signal);
+      if (campaignPbs.size && !controller.signal.aborted) {
+        const campaignTestIds = pbs.filter((p) => campaignPbs.has(p.id)).flatMap((p) => p.tests.map((t) => t.id));
+        await streamAudit(campaignTestIds, { ...attack, enabled: true }, controller.signal);
       }
     } catch (e) {
       if ((e as Error).name !== "AbortError") setRunError((e as Error).message);
     } finally {
       setRunning(false);
       abortRef.current = null;
+      rerunRef.current = false;
     }
   }
 
@@ -321,6 +378,17 @@ export default function Dashboard() {
             action={
               live.length > 0 && (
                 <div className="flex items-center gap-1">
+                  {failedIds.length > 0 && (
+                    <Button
+                      variant="outline"
+                      className="px-2.5 py-1 text-xs"
+                      icon={<RefreshCw className="size-3.5" />}
+                      onClick={() => reattack(failedIds)}
+                      disabled={running}
+                    >
+                      Re-attack failed ({failedIds.length})
+                    </Button>
+                  )}
                   <Button variant="ghost" className="px-2 py-1 text-xs" icon={<Download className="size-3.5" />} onClick={exportReport} disabled={!results.length || running}>
                     Export .md
                   </Button>
@@ -355,6 +423,23 @@ export default function Dashboard() {
                     <p className={cx("mt-0.5 font-mono text-2xl font-semibold tabular-nums", s.cls)}>{s.value}</p>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {compared.length > 0 && !running && (
+              <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-gold/30 bg-gold/[0.05] px-4 py-3 text-[13px]">
+                <span className="font-semibold text-gold">Re-attack results</span>
+                <span className="text-pass">{fixedCount} fixed</span>
+                <span className={stillCount ? "text-fail" : "text-muted"}>{stillCount} still failing</span>
+                {stillCount === 0 && fixedCount > 0 && <span className="text-ink-dim">Every re-attacked weakness now holds. Nice work.</span>}
+              </div>
+            )}
+
+            {failedIds.length > 0 && compared.length === 0 && !running && (
+              <div className="mb-4 rounded-xl border border-line bg-charcoal-2/60 px-4 py-3 text-[12.5px] leading-relaxed text-ink-dim">
+                <span className="font-semibold text-ink">Harden &amp; re-attack:</span> copy a fix prompt below, apply it in your IDE,
+                restart your app, then hit <span className="text-gold">Re-attack failed</span> to see what you fixed. Using the demo bot? Stop it
+                and run <span className="font-mono text-ink">npm run demo:hardened</span>.
               </div>
             )}
 
@@ -401,7 +486,7 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-3">
                 {live.map((l) => (
-                  <ResultCard key={l.testId} live={l} running={running} />
+                  <ResultCard key={l.testId} live={l} running={running} onRerun={() => reattack([l.testId])} />
                 ))}
                 <div ref={feedEndRef} />
               </div>

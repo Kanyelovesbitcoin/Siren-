@@ -1,0 +1,96 @@
+{
+  "_readme": "Recommended attacker/judge models shown in Siren's Judge panel. Edit freely: 'match' is the text Siren looks for in your installed model names. tier: laptop | desktop | workstation | cloud. status: ready | cloud | pending. Last checked Nov 2026.",
+  "models": [
+    {
+      "id": "qwen3.8-27b",
+      "name": "Qwen 3.8 27B",
+      "family": "Qwen",
+      "pull": "ollama pull qwen3.8:27b",
+      "match": "qwen3.8",
+      "size": "~17 GB (Q4)",
+      "tier": "desktop",
+      "status": "ready",
+      "recommended": true,
+      "note": "Best all-round pick: creative attacks and reliable JSON grading. Needs Ollama 0.32.12+ and about 24 GB of RAM/VRAM."
+    },
+    {
+      "id": "glm-4.7-flash",
+      "name": "GLM-4.7-Flash",
+      "family": "GLM",
+      "pull": "ollama pull glm-4.7-flash",
+      "match": "glm-4.7-flash",
+      "size": "~19 GB (Q4)",
+      "tier": "desktop",
+      "status": "ready",
+      "note": "Fast and follows Siren's JSON format well. The best GLM you can run fully offline today."
+    },
+    {
+      "id": "deepseek-r1-14b",
+      "name": "DeepSeek-R1 14B / 32B",
+      "family": "DeepSeek",
+      "pull": "ollama pull deepseek-r1:14b",
+      "match": "deepseek-r1",
+      "size": "~9 GB (14B) · ~20 GB (32B)",
+      "tier": "laptop",
+      "status": "ready",
+      "note": "Older, but runs on most machines. It thinks out loud before answering; Siren strips that automatically. Use deepseek-r1:32b if you have the memory."
+    },
+    {
+      "id": "glm-5.3-flash",
+      "name": "GLM-5.3-Flash",
+      "family": "GLM",
+      "pull": "ollama pull glm-5.3-flash:cloud",
+      "match": "glm-5.3-flash",
+      "size": "320B MoE",
+      "tier": "cloud",
+      "status": "cloud",
+      "note": "Ollama only offers a cloud tag, so your app's replies are sent to Ollama's servers. Local GGUF builds exist but need a workstation."
+    },
+    {
+      "id": "glm-5.3",
+      "name": "GLM-5.3",
+      "family": "GLM",
+      "pull": "ollama pull glm-5.3:cloud",
+      "match": "glm-5.3:",
+      "size": "744B MoE",
+      "tier": "cloud",
+      "status": "cloud",
+      "note": "Flagship GLM. Cloud tag on Ollama; local quants start around 239 GB."
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "name": "DeepSeek V4 Flash",
+      "family": "DeepSeek",
+      "pull": "ollama pull deepseek-v4-flash:cloud",
+      "match": "deepseek-v4",
+      "size": "284B MoE (13B active)",
+      "tier": "cloud",
+      "status": "cloud",
+      "note": "Official Ollama tag is cloud-only. To run it locally on a big workstation: ollama run hf.co/unsloth/DeepSeek-V4-Flash-GGUF:UD-Q4_K_XL"
+    },
+    {
+      "id": "inkling-2-mini",
+      "name": "Inkling 2 Mini",
+      "family": "Inkling",
+      "pull": "",
+      "lmstudioSearch": "Inkling 2 Mini GGUF",
+      "match": "inkling",
+      "size": "26B MoE",
+      "tier": "desktop",
+      "status": "pending",
+      "note": "Released Nov 20, 2026 by Thinking Machines (Apache 2.0). Ollama/LM Studio support for its new architecture wasn't confirmed yet. Search LM Studio for a GGUF and load it once one appears."
+    },
+    {
+      "id": "inkling-2-small",
+      "name": "Inkling 2 Small",
+      "family": "Inkling",
+      "pull": "",
+      "lmstudioSearch": "Inkling 2 Small GGUF",
+      "match": "inkling-2-small",
+      "size": "594B MoE · ~172 GB at 1-bit",
+      "tier": "workstation",
+      "status": "pending",
+      "note": "Open weights, but even the smallest quant needs a multi-GPU workstation, and older llama.cpp builds don't recognise the inkling2 architecture."
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Gavel, Info, Plug } from "lucide-react";
+import { Cloud, Gavel, Info, Plug } from "lucide-react";
+import ModelPicker, { isCloudModel, preferredModel } from "./ModelPicker";
 import { Button, Card, Input, Label, Select, cx } from "./ui";
 import { PROVIDER_PRESETS } from "@/lib/providers";
 import type { ProviderConfig, ProviderId } from "@/lib/types";
@@ -50,7 +51,7 @@ export default function ProviderPanel({
         ok: list.length > 0,
         message: list.length ? `Connected · ${list.length} model${list.length === 1 ? "" : "s"} available` : "Connected, but no models are installed.",
       });
-      if (list.length && !list.includes(value.model)) onChange({ ...value, model: list[0], mode: "judge" });
+      if (list.length && !list.includes(value.model)) onChange({ ...value, model: preferredModel(list) ?? list[0], mode: "judge" });
     } catch (e) {
       setStatus({ ok: false, message: (e as Error).message });
     } finally {
@@ -134,7 +135,19 @@ export default function ProviderPanel({
               </option>
             ))}
           </Select>
+          {isCloudModel(value.model) && (
+            <p className="mt-1.5 flex gap-1.5 text-[11.5px] leading-relaxed text-warn">
+              <Cloud className="mt-px size-3.5 shrink-0" />
+              This is an Ollama cloud model: your app&apos;s replies are sent to Ollama&apos;s servers for attacking and grading.
+            </p>
+          )}
         </div>
+
+        <ModelPicker
+          installed={models}
+          current={value.model}
+          onUse={(m) => onChange({ ...value, model: m, mode: "judge" })}
+        />
 
         <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-relaxed text-ink-dim">
           <input

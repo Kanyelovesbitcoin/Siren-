@@ -55,7 +55,7 @@ Siren ships with a deliberately vulnerable chatbot so you can see it work in 30 
 npm run demo:target
 ```
 
-Then in the dashboard, click **"Use the bundled demo target"** and hit **Run audit**. You'll see leaks, injections and runaway outputs get caught, plus a few passes where the bot holds up.
+Then in the dashboard, click **"Use the bundled demo target"** and hit **Run audit**. You'll see leaks, injections and runaway outputs get caught, plus a few passes where the bot holds up. `npm run demo:hardened` starts the same bot with the fixes applied, which is useful for the Harden & re-attack loop below.
 
 ---
 
@@ -73,13 +73,45 @@ Then in the dashboard, click **"Use the bundled demo target"** and hit **Run aud
 
 ### Attacker mode (adaptive red-teaming)
 
-Flip on **Attacker mode** to let a local model generate the attacks instead of running the fixed prompts. For each selected category it runs an **adaptive campaign**: it writes an attack, reads your app's reply, and escalates — switching tactics when refused — until it breaks through or hits the turn cap (2–8, default 5).
+Flip on **Attacker mode** to have a local model test your app's guardrails itself instead of running the fixed prompts. For each selected category it runs an **adaptive campaign**:
 
-- **One model, both jobs.** The model you connect as the judge also writes the attacks and grades each reply, so it's a single local model. An **uncensored** model (e.g. a Dolphin or Hermes variant in LM Studio or Ollama) works best here, because safety-tuned models often refuse to write jailbreak attempts.
-- **Easy to follow.** Every turn shows the attacker's **Plan** ("trying a translation side-channel because direct recall was refused") and its **Read** of the reply, in plain English — so you (or someone in your course) can see exactly how a weakness was found.
-- **Same guardrails.** Attacks still only ever fire at your localhost target, redirects are never followed, and your canary phrases remain an instant-fail tripwire. The Rate & Token category stays in standard mode (it's load testing, not a conversation).
+1. **Plan:** pick a tactic it hasn't tried yet from 12 families (direct ask, authority pretext, role-play, hypothetical framing, translate/encode, format hijack, warm-up then pivot, payload splitting, instruction-in-data, fake system message, refusal suppression, push back & reframe) and write a test message.
+2. **Fire:** send it to your localhost app (with conversation history if your template uses `{{messages}}`).
+3. **Assess:** grade the reply as **Held**, **Wobbled** (leaked hints / partly complied) or **Broke**.
 
-A `fail` here means the attacker broke your app; a `pass` means it resisted every escalation. You don't need MCP for this — it uses the model's normal OpenAI-compatible (LM Studio / OpenRouter) or Ollama API, which Siren already speaks.
+It keeps rotating tactics until the guardrail breaks or it runs out of attempts (3–12, default 8). After repeated refusals it can start a **fresh conversation** so earlier refusals don't make your app suspicious. If the model returns something unusable it gets one corrective retry, then falls back to the playbook's built-in attacks, so smaller local models still produce a full campaign.
+
+- **Verdicts:** **Fail** = a tactic broke through · **Warn** = never broke, but wobbled · **Pass** = held against every tactic tried.
+- **Easy to follow:** each attempt shows its tactic, the attacker's **Plan**, your app's reply, and a **Read** with a Held/Wobbled/Broke badge. A **Guardrail scoreboard** shows every tactic at a glance.
+- **One model, both jobs:** the model you connect writes the attacks and grades the replies. Reasoning models' `<think>` blocks are stripped automatically.
+- **Same guardrails:** tests only fire at your localhost target, redirects are never followed, and canary phrases still fail a test instantly. Rate & Token tests stay in standard mode.
+
+You don't need MCP for this: Siren uses LM Studio's OpenAI-compatible API or Ollama's API directly.
+
+### Recommended attacker models
+
+Open **Recommended attacker models** in the Judge panel. After **Test connection**, installed models light up with a **Use** button. Siren also auto-selects the top pick if you have it. The list lives in `src/data/attacker-models.json`, so you can edit it as new models land.
+
+| Model | Get it | Runs on |
+| --- | --- | --- |
+| **Qwen 3.8 27B** (top pick) | `ollama pull qwen3.8:27b` | Desktop / Mac with ~24 GB |
+| GLM-4.7-Flash | `ollama pull glm-4.7-flash` | Desktop (~19 GB) |
+| DeepSeek-R1 14B / 32B | `ollama pull deepseek-r1:14b` | Laptop (~9 GB) / desktop |
+| GLM-5.3-Flash, GLM-5.3 | `…:cloud` tags | Ollama cloud: your app's replies leave your machine |
+| DeepSeek V4 Flash | `ollama pull deepseek-v4-flash:cloud` | Cloud, or a big workstation via Hugging Face GGUF |
+| Inkling 2 Mini / Small | LM Studio, once GGUFs land | Mini: desktop · Small: workstation. Local support still pending |
+
+Siren warns you in the Judge panel whenever a `:cloud` model is selected.
+
+### Harden & re-attack
+
+The loop for turning red into green:
+
+1. Run an audit (standard or attacker mode).
+2. On a Fail/Warn, **Copy Fix Prompt** and apply it in your IDE, then restart your app.
+3. Hit **Re-attack failed** (or **Re-attack** on one card). Only those results re-run, in place, with a **before → after** chip (`FAIL → PASS · Fixed`) and a summary of what you fixed.
+
+Try it with the demo: run `npm run demo:target`, launch an attack, then stop the bot and start `npm run demo:hardened` (same URL, fixes applied) and hit **Re-attack failed**.
 
 ### How verdicts are decided
 
@@ -181,7 +213,7 @@ bin/
   validate-playbooks.js    Playbook linter
 playbooks/                 OWASP test suites as JSON (loaded at runtime)
 examples/
-  vulnerable-bot.js        Intentionally weak demo target on :3001
+  vulnerable-bot.js        Demo target on :3001 (weak by default, --hardened for the fixed version)
 src/
   app/
     page.tsx               Dashboard entry
@@ -196,6 +228,9 @@ src/
     providers.ts           Ollama / LM Studio / OpenAI-compatible clients
     runner.ts              Sequential audit engine (prompt, burst, oversize) + attacker mode
     attacker.ts            Adaptive red-team engine (plan → fire → assess loop)
+    tactics.ts             The 12 tactic families attacker mode rotates through
+  data/
+    attacker-models.json   Recommended attacker models (edit freely)
     judge.ts               Canary → rules → judge → heuristic evaluation
     remediation.ts         Copy Fix Prompt builder
 ```

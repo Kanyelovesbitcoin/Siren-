@@ -30,6 +30,11 @@ export const PROVIDER_PRESETS: Record<
   },
 };
 
+/** Reasoning models (Qwen, DeepSeek-R1, GLM...) may prefix answers with <think> blocks. */
+export function stripThinking(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/^[\s\S]*?<\/think>/i, "").trim();
+}
+
 function trimSlash(u: string) {
   return u.replace(/\/+$/, "");
 }
@@ -99,7 +104,7 @@ export async function chat(
     const text = await res.text();
     if (!res.ok) throw new Error(`Ollama ${res.status}: ${text.slice(0, 300)}`);
     const data = JSON.parse(text) as { message?: { content?: string } };
-    return data.message?.content ?? "";
+    return stripThinking(data.message?.content ?? "");
   }
 
   const body: Record<string, unknown> = { model: cfg.model, messages, temperature: 0 };
@@ -120,5 +125,5 @@ export async function chat(
     throw new Error(`Provider ${res.status}: ${text.slice(0, 300)}`);
   }
   const data = JSON.parse(text) as { choices?: { message?: { content?: string } }[] };
-  return data.choices?.[0]?.message?.content ?? "";
+  return stripThinking(data.choices?.[0]?.message?.content ?? "");
 }
