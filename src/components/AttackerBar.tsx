@@ -52,7 +52,7 @@ export default function AttackerBar({
                 grading each reply. A guardrail only passes if it holds against all of them.
               </>
             ) : (
-              <>Run the fixed playbook prompts. Turn this on to let a model probe adaptively instead.</>
+              <>Off: Siren runs its built-in test messages. Turn this on to let an AI model invent its own attacks (needs an AI grader).</>
             )}
           </p>
         </div>
@@ -91,10 +91,10 @@ export default function AttackerBar({
           </span>
           {modelName ? (
             <span className="text-muted">
-              Attacker &amp; judge: <span className="font-mono text-ink-dim">{modelName}</span>
+              Attacker &amp; grader: <span className="font-mono text-ink-dim">{modelName}</span>
             </span>
           ) : (
-            <span className="text-warn">Connect a model below — it generates the attacks.</span>
+            <span className="text-warn">Needs an AI model. Choose &ldquo;Use an AI grader&rdquo; in the AI Grader panel.</span>
           )}
           <span className="text-muted">Rate &amp; token tests stay in standard mode.</span>
         </div>

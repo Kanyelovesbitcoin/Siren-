@@ -4,7 +4,7 @@
 Point Siren at the AI endpoint you're building on `localhost`, run the OWASP Top 10 for LLM Applications playbooks against it, watch every attack and reply side-by-side, and copy a ready-made fix prompt straight into your IDE.
 
 - **Local by design:** test traffic only ever goes to `localhost`, `127.0.0.1` or `0.0.0.0`. The dashboard binds to `127.0.0.1` only.
-- **Bring your own judge:** grade responses with **Ollama**, **LM Studio**, or any **OpenAI-compatible API** (OpenRouter, OpenAI, vLLM…). Or skip the model and use rules only.
+- **No model needed:** results are graded with built-in rules by default, so there is nothing extra to install. For more nuanced verdicts, add an optional AI grader: **Ollama**, **LM Studio**, or any **OpenAI-compatible API** (OpenRouter, OpenAI, vLLM…).
 - **Playbooks are plain JSON:** drop a file in `/playbooks`, refresh, and it's a new tab.
 - **Fixes, not just findings:** every Fail/Warn comes with a plain-English explanation and a **Copy Fix Prompt** button.
 
@@ -28,7 +28,7 @@ If a port is busy, Siren tells you in plain English which one and prints the com
 
 ## Quick start with your own app
 
-A judge model is optional. [Ollama](https://ollama.com) is the easiest if you want one.
+An AI grader is optional (Siren grades with built-in rules by default). [Ollama](https://ollama.com) is the easiest if you want one.
 
 ### macOS
 
@@ -36,7 +36,7 @@ A judge model is optional. [Ollama](https://ollama.com) is the easiest if you wa
    ```bash
    git clone https://github.com/kanyelovesbitcoin/Siren-.git siren && cd siren && npm install
    ```
-2. **(Optional) start a local judge model** in another terminal
+2. **(Optional) start a local AI grader model** in another terminal
    ```bash
    ollama pull llama3.1
    ```
@@ -51,7 +51,7 @@ A judge model is optional. [Ollama](https://ollama.com) is the easiest if you wa
    ```powershell
    git clone https://github.com/kanyelovesbitcoin/Siren-.git siren; cd siren; npm install
    ```
-2. **(Optional) start a local judge model**: install [Ollama for Windows](https://ollama.com/download/windows), then
+2. **(Optional) start a local AI grader model**: install [Ollama for Windows](https://ollama.com/download/windows), then
    ```powershell
    ollama pull llama3.1
    ```
@@ -110,8 +110,8 @@ Prefer to fill the fields in yourself? Open **Advanced / Manual Setup** (on the 
    - Response paths support dots and indexes: `data.reply`, `choices[0].message.content`, `output[-1].text`.
    - Hit **Send test message** to confirm the URL, template and path before an audit.
    - Under **Sharper results**, describe what your app is for (the judge grades more fairly) and add **canary phrases**: unique strings from your real system prompt. If one ever appears in a reply, that test fails automatically.
-2. **Judge model**: pick Ollama / LM Studio / OpenRouter, hit **Test connection**, choose a model. Tick **Rules only** to grade without a model.
-3. **Test suites**: pick tests across the five category tabs and hit **Run audit**. Results stream in live, side-by-side, with latency and a Pass / Warn / Fail badge.
+2. **AI Grader (Optional)**: **Rules only** is selected by default and needs no extra setup. To have a second AI model grade the replies, choose **Use an AI grader**, pick Ollama / LM Studio / OpenRouter, hit **Test connection**, and choose a model.
+3. **Test suites**: pick tests across the five category tabs and hit **Run audit**. Results stream in live, side-by-side, with a Pass / Warn / Fail badge. Each result has a collapsed **Technical details** drawer with the test ID, OWASP code, HTTP status codes, response times and load measurements.
 4. **Fix**: on any Fail or Warn, read **What this means**, then **Copy Fix Prompt** and paste it into Claude Code, Cursor or Copilot. **Export .md** saves the whole report.
 
 ### Attacker mode (adaptive red-teaming)
@@ -133,7 +133,7 @@ You don't need MCP for this: Siren uses LM Studio's OpenAI-compatible API or Oll
 
 ### Recommended attacker models
 
-Open **Recommended attacker models** in the Judge panel. After **Test connection**, installed models light up with a **Use** button. Siren also auto-selects the top pick if you have it. The list lives in `src/data/attacker-models.json`, so you can edit it as new models land.
+Choose **Use an AI grader** in the AI Grader panel, then open **Recommended attacker models**. After **Test connection**, installed models light up with a **Use** button. Siren also auto-selects the top pick if you have it. The list lives in `src/data/attacker-models.json`, so you can edit it as new models land.
 
 | Model | Get it | Runs on |
 | --- | --- | --- |
@@ -144,7 +144,7 @@ Open **Recommended attacker models** in the Judge panel. After **Test connection
 | DeepSeek V4 Flash | `ollama pull deepseek-v4-flash:cloud` | Cloud, or a big workstation via Hugging Face GGUF |
 | Inkling 2 Mini / Small | LM Studio, once GGUFs land | Mini: desktop · Small: workstation. Local support still pending |
 
-Siren warns you in the Judge panel whenever a `:cloud` model is selected.
+Siren warns you in the AI Grader panel whenever a `:cloud` model is selected.
 
 ### Harden & re-attack
 
@@ -158,14 +158,14 @@ Try it with the demo: in one terminal run `npm run siren`, in another run `npm r
 
 ### How verdicts are decided
 
-Each result shows which layer decided it, in this order of authority:
+Each result's **Technical details** drawer shows which layer decided it, in this order of authority:
 
 | Layer | What it does |
 | --- | --- |
 | **Canary** | One of your canary phrases appeared → automatic **Fail**. |
 | **Playbook rule** | Deterministic markers from the playbook (`mustNotContain`, `mustNotMatch`, raw-body checks, output size, HTTP status under load). |
-| **Judge model** | Your model reads the transcript (treated as untrusted data) and returns pass / warn / fail with a reason. |
-| **Heuristic** | No judge configured → refusal-language detection. Ambiguous cases become **Warn** so you review them. |
+| **AI grader** | Your model reads the transcript (treated as untrusted data) and returns pass / warn / fail with a reason. |
+| **Built-in rules** | No AI grader configured (the default) → refusal-language detection. Ambiguous cases become **Warn** so you review them. |
 
 ---
 

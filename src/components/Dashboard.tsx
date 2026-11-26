@@ -50,12 +50,27 @@ function demoPortFromUrl(): number | null {
   return Number.isInteger(port) && port > 0 && port < 65536 ? port : DEMO_PORT;
 }
 
+// Rules only by default: a first audit needs no AI model, no install and no API key.
 const DEFAULT_JUDGE: ProviderConfig = {
   provider: "ollama",
   baseUrl: PROVIDER_PRESETS.ollama.baseUrl,
   model: "",
-  mode: "judge",
+  mode: "heuristic",
 };
+
+/**
+ * The audit engine's progress notes are written for developers. Reword them for display
+ * only; the engine itself is untouched.
+ */
+function plainLog(message: string): string {
+  if (message.startsWith("No judge model selected")) {
+    return "Grading with Siren's built-in rules. No extra setup needed. You can add an AI grader later for more nuanced verdicts.";
+  }
+  return message
+    .replace(/\bJudge model\b/g, "AI grader")
+    .replace(/\bjudge model\b/g, "AI grader")
+    .replace(/\bheuristics\b/g, "built-in rules");
+}
 
 const DEFAULT_ATTACK: AttackConfig = { enabled: false, maxTurns: 8 };
 
@@ -161,7 +176,12 @@ export default function Dashboard() {
     restoredRef.current = true;
     const saved = loadSaved();
     if (saved?.target) setTarget({ ...DEFAULT_TARGET, ...saved.target });
-    if (saved?.judge) setJudge({ ...DEFAULT_JUDGE, ...saved.judge, apiKey: "" });
+    if (saved?.judge) {
+      const restored: ProviderConfig = { ...DEFAULT_JUDGE, ...saved.judge, apiKey: "" };
+      // No model picked means rules-only grading in practice, so show it that way.
+      if (!restored.model?.trim()) restored.mode = "heuristic";
+      setJudge(restored);
+    }
     if (saved?.attack) setAttack({ ...DEFAULT_ATTACK, ...saved.attack });
     if (saved?.selected) setSelected(new Set(saved.selected));
     // Settings saved before the start screen existed belong to someone who already knows the dashboard.
@@ -234,7 +254,7 @@ export default function Dashboard() {
         : selected.size === 0
           ? "Select at least one test."
           : attack.enabled && !hasModel
-            ? "Attacker mode needs a connected model — it generates the attacks."
+            ? "Attacker mode needs an AI model. Set one up under AI Grader, or turn attacker mode off."
             : undefined;
 
   const results = live.map((l) => l.result).filter((r): r is TestResult => !!r);
@@ -280,7 +300,7 @@ export default function Dashboard() {
         setProgress((p) => ({ ...p, done: p.done + 1 }));
         break;
       case "log":
-        setLogs((prev) => [...prev, { level: e.level, message: e.message }]);
+        setLogs((prev) => [...prev, { level: e.level, message: plainLog(e.message) }]);
         break;
       case "done":
         if (e.aborted) setLogs((prev) => [...prev, { level: "warn", message: "Audit stopped." }]);
@@ -421,7 +441,7 @@ export default function Dashboard() {
     const campaignPbs = new Set(ids.filter((id) => id.startsWith("attack:")).map((id) => id.slice("attack:".length)));
     const plainIds = ids.filter((id) => !id.startsWith("attack:"));
     if (campaignPbs.size && !hasModel) {
-      setRunError("Re-attacking an adaptive campaign needs a connected model.");
+      setRunError("Re-attacking an attacker-mode result needs an AI model. Set one up under AI Grader.");
       return;
     }
     rerunRef.current = true;

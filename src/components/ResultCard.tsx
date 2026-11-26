@@ -1,16 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, ChevronDown, Clock, Crosshair, RefreshCw, RotateCcw, Sparkles, TriangleAlert } from "lucide-react";
+import { ArrowRight, ChevronDown, Crosshair, RefreshCw, RotateCcw, Sparkles, TriangleAlert } from "lucide-react";
 import { Chip, CopyButton, SeverityChip, VerdictBadge, cx } from "./ui";
 import { tacticName } from "@/lib/tactics";
 import type { TestResult, TurnOutcome, TurnRecord, Verdict } from "@/lib/types";
 
 const DECIDED_LABEL: Record<TestResult["decidedBy"], string> = {
-  canary: "canary match",
+  canary: "canary phrase match",
   rule: "playbook rule",
-  judge: "judge model",
-  heuristic: "heuristic",
+  judge: "AI grader",
+  heuristic: "built-in rules",
   deterministic: "measurement",
   error: "error",
 };
@@ -44,7 +44,19 @@ function OutcomeChip({ outcome }: { outcome: TurnOutcome }) {
   );
 }
 
+/**
+ * Load tests put a status-code and latency summary ahead of a sample reply. Those numbers are
+ * all in the Technical details drawer ("Measurements"), so the main view shows just the reply.
+ */
+function splitLoadSummary(response: string): { isSample: boolean; reply: string } {
+  const marker = "\n\nSample response:\n";
+  const i = response.indexOf(marker);
+  if (i < 0 || !response.startsWith("Status breakdown")) return { isSample: false, reply: response };
+  return { isSample: true, reply: response.slice(i + marker.length) };
+}
+
 function TurnRow({ turn, total }: { turn: TurnRecord; total: number }) {
+  const { isSample, reply } = splitLoadSummary(turn.response);
   return (
     <div>
       {turn.freshConversation && (
@@ -76,26 +88,15 @@ function TurnRow({ turn, total }: { turn: TurnRecord; total: number }) {
           </p>
         </div>
         <div className="bg-charcoal-2/70 p-3.5">
-          <p className="mb-1.5 flex items-center justify-between gap-2 text-[10.5px] font-semibold tracking-wider text-muted uppercase">
-            <span className="flex items-center gap-2">
-              <span className="size-1.5 rounded-full bg-ink-dim" />
-              Your app
-            </span>
-            <span className="flex items-center gap-2 font-mono font-normal tracking-normal normal-case">
-              {turn.status !== null && (
-                <span className={cx(turn.status >= 400 ? "text-fail" : "text-ink-dim")}>HTTP {turn.status}</span>
-              )}
-              <span className="flex items-center gap-1">
-                <Clock className="size-3" />
-                {turn.latencyMs.toLocaleString()} ms
-              </span>
-            </span>
+          <p className="mb-1.5 flex items-center gap-2 text-[10.5px] font-semibold tracking-wider text-muted uppercase">
+            <span className="size-1.5 rounded-full bg-ink-dim" />
+            Your app{isSample ? " · one of the replies" : ""}
           </p>
           {turn.error ? (
             <p className="text-[12.5px] text-fail">{turn.error}</p>
           ) : (
             <p className="max-h-56 overflow-auto text-[13px] leading-relaxed whitespace-pre-wrap text-ink scroll-quiet">
-              {turn.response || <span className="text-muted italic">(empty response)</span>}
+              {reply || <span className="text-muted italic">(empty response)</span>}
             </p>
           )}
           {turn.assessment && (
@@ -158,6 +159,79 @@ function ChangeChip({ before, after }: { before: Verdict; after: Verdict }) {
   );
 }
 
+/**
+ * Everything a developer wants and a beginner doesn't: test ID, OWASP code, which layer decided
+ * the verdict, HTTP status codes, response times and load-test measurements. Collapsed by default.
+ */
+function TechnicalDetails({ live }: { live: LiveTest }) {
+  const r = live.result;
+  const rows: [string, React.ReactNode][] = [
+    ["Test ID", <span key="id" className="font-mono">{live.testId}</span>],
+    [
+      "Category",
+      <span key="cat">
+        <span className="font-mono text-gold/80">OWASP {live.owasp}</span>
+        {live.playbookTitle ? ` · ${live.playbookTitle}` : ""}
+      </span>,
+    ],
+  ];
+  if (r) {
+    rows.push(["Decided by", DECIDED_LABEL[r.decidedBy]]);
+    rows.push(["Total time", <span key="t" className="font-mono">{(r.totalLatencyMs / 1000).toFixed(2)}s</span>]);
+  }
+  return (
+    <details className="group rounded-xl border border-line bg-obsidian/40">
+      <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-muted select-none hover:text-ink">
+        <span className="mr-1 inline-block transition group-open:rotate-90">›</span> Technical details
+      </summary>
+      <div className="space-y-3 px-3 pb-3 text-[12px] text-ink-dim">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
+          {rows.map(([label, value]) => (
+            <div key={label} className="contents">
+              <dt className="text-muted">{label}</dt>
+              <dd className="min-w-0 break-words">{value}</dd>
+            </div>
+          ))}
+        </dl>
+
+        {live.turns.length > 0 && (
+          <table className="w-full max-w-md border-collapse text-left font-mono text-[11.5px]">
+            <thead>
+              <tr className="text-[10.5px] tracking-wider text-muted uppercase">
+                <th className="py-1 pr-4 font-sans font-semibold">Attempt</th>
+                <th className="py-1 pr-4 font-sans font-semibold">HTTP status</th>
+                <th className="py-1 font-sans font-semibold">Response time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {live.turns.map((t) => (
+                <tr key={t.index} className="border-t border-line">
+                  <td className="py-1 pr-4">{t.index + 1}</td>
+                  <td className={cx("py-1 pr-4", t.status !== null && t.status >= 400 && "text-fail")}>{t.status ?? "no response"}</td>
+                  <td className="py-1">{t.latencyMs.toLocaleString()} ms</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {r?.stats && (
+          <div>
+            <p className="mb-1.5 text-[10.5px] font-semibold tracking-wider text-muted uppercase">Measurements</p>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(r.stats).map(([k, v]) => (
+                <Chip key={k}>
+                  {k}: <span className="text-ink">{typeof v === "number" ? v.toLocaleString() : v}</span>
+                </Chip>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
 export default function ResultCard({
   live,
   running,
@@ -185,18 +259,10 @@ export default function ResultCard({
         <button className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 text-left" onClick={() => setOpen((o) => !o)}>
           <VerdictBadge verdict={r ? r.verdict : "running"} />
           <span className="text-sm font-medium text-ink">{live.testName}</span>
-          <Chip className="text-gold/80">{live.owasp}</Chip>
           {r && <SeverityChip severity={r.severity} />}
           {r && live.previousVerdict && <ChangeChip before={live.previousVerdict} after={r.verdict} />}
         </button>
         <span className="flex items-center gap-3 text-[11px] text-muted">
-          {r && <span className="hidden sm:inline">via {DECIDED_LABEL[r.decidedBy]}</span>}
-          {r && (
-            <span className="flex items-center gap-1 font-mono">
-              <Clock className="size-3" />
-              {(r.totalLatencyMs / 1000).toFixed(2)}s
-            </span>
-          )}
           {r && onRerun && (
             <button
               onClick={onRerun}
@@ -232,16 +298,6 @@ export default function ResultCard({
               <span className="font-medium text-ink">Verdict: </span>
               {r.reason}
             </p>
-          )}
-
-          {r?.stats && (
-            <div className="flex flex-wrap gap-1.5">
-              {Object.entries(r.stats).map(([k, v]) => (
-                <Chip key={k}>
-                  {k}: <span className="text-ink">{typeof v === "number" ? v.toLocaleString() : v}</span>
-                </Chip>
-              ))}
-            </div>
           )}
 
           {needsFix && r.fixPrompt && (
@@ -285,6 +341,8 @@ export default function ResultCard({
               )}
             </div>
           )}
+
+          {(r || live.turns.length > 0) && <TechnicalDetails live={live} />}
         </div>
       )}
     </article>

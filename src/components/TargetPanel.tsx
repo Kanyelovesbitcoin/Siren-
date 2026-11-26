@@ -325,8 +325,11 @@ export default function TargetPanel({
             Send test message
           </Button>
           {testRes && (
-            <span className={cx("text-xs", testRes.ok ? "text-pass" : "text-fail")}>
-              {testRes.ok ? `HTTP ${testRes.status} · ${testRes.latencyMs} ms` : testRes.status ? `HTTP ${testRes.status}` : "Failed"}
+            <span
+              className={cx("text-xs", testRes.ok ? "text-pass" : "text-fail")}
+              title={testRes.status ? `HTTP ${testRes.status}${testRes.latencyMs != null ? ` · ${testRes.latencyMs} ms` : ""}` : undefined}
+            >
+              {testRes.ok ? "Got a reply" : testRes.status ? `Your app returned an error (${testRes.status})` : "No reply"}
             </span>
           )}
         </div>
@@ -376,7 +379,7 @@ export default function TargetPanel({
           </summary>
           <div className="space-y-4 px-3 pb-3">
             <div>
-              <Label hint="given to the judge & fix prompts">What is your app for?</Label>
+              <Label hint="used for grading & fix prompts">What is your app for?</Label>
               <TextArea
                 rows={3}
                 className="font-sans text-[13px]"
