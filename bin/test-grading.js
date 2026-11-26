@@ -25,6 +25,7 @@ function load(file, stubs = {}) {
 
 const { looksLikeRefusal } = load("judge.ts", { "./providers": { chat: async () => "" } });
 const { extractReply, bodyError } = load("template.ts");
+const { parseRetryAfter, blockage, haltReason } = load("resilience.ts");
 
 let failed = 0;
 function check(name, got, want) {
@@ -77,6 +78,17 @@ check("error object with message", bodyError('{"error":{"message":"rate limited"
 check('"error": null is not an error', bodyError('{"error":null,"reply":"hi"}'), null);
 check("no error field", bodyError('{"reply":"hi"}'), null);
 check("not JSON", bodyError("hello"), null);
+
+// ── Pacing and the circuit breaker ──
+check("Retry-After in seconds", parseRetryAfter("2"), 2000);
+check("Retry-After as a date", parseRetryAfter("Wed, 21 Oct 2026 07:28:05 GMT", Date.parse("Wed, 21 Oct 2026 07:28:00 GMT")), 5000);
+check("Retry-After missing or junk", [parseRetryAfter(null), parseRetryAfter(""), parseRetryAfter("soon")], [null, null, null]);
+check("429 is a blockage", blockage([{ status: 429, error: "rate limited" }]), { kind: "rate-limited" });
+check("no response is a blockage", blockage([{ status: null, error: "Connection refused" }]).kind, "unreachable");
+check("a 500 on one message is not", blockage([{ status: 500, error: "Failed to get AI response" }]), null);
+check("a clean turn is not", blockage([{ status: 200 }]), null);
+check("rate-limit stop message", haltReason({ kind: "rate-limited" }, "localhost:3000", 12000), "Your app is rate-limiting Siren (HTTP 429). Restart your local app to reset its rate limit, or wait about 12 seconds before re-testing.");
+check("unreachable stop message", haltReason({ kind: "unreachable", detail: "Connection refused — is your app running at http://localhost:3000?" }, "localhost:3000"), "Can't reach localhost:3000. Make sure your app is still running, then run the audit again.");
 
 console.log(failed ? `\n${failed} check(s) failed.` : "\nAll grading checks passed.");
 process.exit(failed ? 1 : 0);

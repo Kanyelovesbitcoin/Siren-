@@ -199,6 +199,8 @@ export default function Dashboard() {
   const abortRef = useRef<AbortController | null>(null);
   const playbooksRef = useRef<Playbook[]>([]);
   const rerunRef = useRef(false);
+  /** The engine stopped the run itself (app down or rate-limiting). Don't start another request for it. */
+  const haltedRef = useRef(false);
   const resultsRef = useRef<HTMLDivElement | null>(null);
   const restoredRef = useRef(false);
 
@@ -396,8 +398,15 @@ export default function Dashboard() {
         break;
       case "done":
         if (e.aborted) setLogs((prev) => [...prev, { level: "warn", message: "Audit stopped." }]);
+        if (e.halted) {
+          // One plain-English reason, instead of the same error repeated on every remaining card.
+          haltedRef.current = true;
+          setRunError(e.halted);
+        }
         setAnnouncement(
-          e.aborted
+          e.halted
+            ? `Audit stopped early. ${e.halted}`
+            : e.aborted
             ? "Audit stopped."
             : `Audit finished. ${e.summary.fail} need action, ${e.summary.warn} need review, ${e.summary.error} could not run, ${e.summary.pass} passed.`,
         );
@@ -467,6 +476,7 @@ export default function Dashboard() {
       return;
     }
     rerunRef.current = false;
+    haltedRef.current = false;
     setLive([]);
     setLogs([]);
     setRunError(null);
@@ -570,6 +580,7 @@ export default function Dashboard() {
       return;
     }
     rerunRef.current = true;
+    haltedRef.current = false;
     setLogs([]);
     setRunError(null);
     setProgress({ done: 0, total: ids.length });
@@ -578,7 +589,7 @@ export default function Dashboard() {
     abortRef.current = controller;
     try {
       if (plainIds.length) await streamAudit(plainIds, { ...attack, enabled: false }, controller.signal);
-      if (campaignPbs.size && !controller.signal.aborted) {
+      if (campaignPbs.size && !controller.signal.aborted && !haltedRef.current) {
         const campaignTestIds = pbs.filter((p) => campaignPbs.has(p.id)).flatMap((p) => p.tests.map((t) => t.id));
         await streamAudit(campaignTestIds, { ...attack, enabled: true }, controller.signal);
       }

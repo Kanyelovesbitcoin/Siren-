@@ -6,6 +6,7 @@ import { bodyError, extractReply, renderBody, templateUsesHistory, type ChatMess
 import { deterministicChecks, heuristicEvaluate, judgeEvaluate, type Evaluation } from "./judge";
 import { buildFixPrompt } from "./remediation";
 import { runAttackCampaign, syntheticTest } from "./attacker";
+import { BREAKER_THRESHOLD, MAX_HONORED_WAIT_MS, blockage, haltReason, parseRetryAfter } from "./resilience";
 import type {
   AttackConfig,
   AuditEvent,
@@ -37,6 +38,78 @@ export interface TargetCall {
   detectedPath?: string;
   latencyMs: number;
   error?: string;
+  /** From the app's Retry-After header, in milliseconds. */
+  retryAfterMs?: number | null;
+}
+
+const HELLO = "Hello! In one sentence, what can you help me with?";
+
+/**
+ * Pause between tests so ordinary checks don't trip the app's rate limiter: 300–500 ms by
+ * default. Set SIREN_PACING_MS to a fixed number of milliseconds (0 turns pacing off).
+ */
+function pacingMs(): number {
+  const raw = process.env.SIREN_PACING_MS;
+  const fixed = Number(raw);
+  if (raw !== undefined && raw.trim() !== "" && Number.isFinite(fixed) && fixed >= 0) return fixed;
+  return 300 + Math.random() * 200;
+}
+
+/** Sleep that ends early if the audit is stopped. */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (ms <= 0 || signal?.aborted) return resolve();
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener("abort", done, { once: true });
+  });
+}
+
+/** Shared by everything in one audit run. */
+interface RunContext {
+  signal: AbortSignal;
+  /** Tell the user Siren is waiting, so a pause doesn't look like a hang. */
+  note: (message: string) => void;
+  /** Retry-After from the most recent rate-limited response, for the stop message. */
+  lastRetryAfterMs: number | null;
+}
+
+/**
+ * callTarget, but well-mannered: if the app answers "429, retry after N seconds" and N is
+ * short, wait that long and try once more instead of recording an error.
+ */
+async function callPolitely(target: TargetConfig, prompt: string, history: ChatMessage[], ctx: RunContext): Promise<TargetCall> {
+  let call = await callTarget(target, prompt, history, ctx.signal);
+  if (call.status !== 429) return call;
+  ctx.lastRetryAfterMs = call.retryAfterMs ?? null;
+  const wait = call.retryAfterMs;
+  if (wait === null || wait === undefined || wait > MAX_HONORED_WAIT_MS || ctx.signal.aborted) return call;
+  ctx.note(`Your app asked Siren to slow down, so it waited ${Math.max(1, Math.ceil(wait / 1000))} seconds and tried again.`);
+  await sleep(wait + 150, ctx.signal);
+  if (ctx.signal.aborted) return call;
+  call = await callTarget(target, prompt, history, ctx.signal);
+  if (call.status === 429) ctx.lastRetryAfterMs = call.retryAfterMs ?? null;
+  return call;
+}
+
+/**
+ * One friendly message before the audit starts. If the app is down, rate-limiting, or
+ * answering with errors, say so once instead of filling every result card with the same error.
+ * Returns the reason to stop, or null when the app is ready.
+ */
+async function preflight(target: TargetConfig, ctx: RunContext): Promise<string | null> {
+  const call = await callPolitely(target, HELLO, [], ctx);
+  if (ctx.signal.aborted) return null;
+  const failure = targetFailure(call);
+  if (!failure) return null;
+  const host = checkTargetUrl(target.url).url?.host ?? "your app";
+  const block = blockage([{ status: call.status, error: failure }]);
+  if (block) return haltReason(block, host, call.retryAfterMs);
+  return `The audit didn't start because your app answered Siren's hello with an error. ${failure.replace(/[.\s]*$/, "")}. Fix that first, then run the audit again.`;
 }
 
 const is2xx = (status: number | null) => status !== null && status >= 200 && status < 300;
@@ -109,7 +182,8 @@ export async function callTarget(
       };
     }
     const { text, resolved, detectedPath } = extractReply(raw, target.responsePath);
-    return { status: res.status, raw, text, resolved, detectedPath, latencyMs };
+    const retryAfterMs = parseRetryAfter(res.headers.get("retry-after"));
+    return { status: res.status, raw, text, resolved, detectedPath, latencyMs, retryAfterMs };
   } catch (e) {
     const latencyMs = Math.round(performance.now() - started);
     const err = e as Error & { cause?: { code?: string } };
@@ -141,6 +215,7 @@ async function runPromptTest(
   emit: (e: AuditEvent) => void,
   signal: AbortSignal,
   warnOnce: (key: string, msg: string) => void,
+  ctx: RunContext,
 ): Promise<{ turns: TurnRecord[]; raws: string[] }> {
   const turns: TurnRecord[] = [];
   const raws: string[] = [];
@@ -155,7 +230,10 @@ async function runPromptTest(
   for (let i = 0; i < test.turns.length; i++) {
     if (signal.aborted) break;
     const prompt = test.turns[i];
-    const call = await callTarget(target, prompt, history, signal);
+    // The app's rate limiter counts requests, not tests, so pace the turns of a conversation too.
+    if (i > 0) await sleep(pacingMs(), signal);
+    if (signal.aborted) break;
+    const call = await callPolitely(target, prompt, history, ctx);
     // An API error (non-2xx, or a JSON {"error": ...} body) is not a reply. Record it and stop.
     const failure = targetFailure(call);
     if (failure && !call.error) call.error = failure;
@@ -265,12 +343,12 @@ async function runBurstTest(test: PlaybookTest, target: TargetConfig, signal: Ab
   return { turns: [turn], evaluation, stats };
 }
 
-async function runOversizeTest(test: PlaybookTest, target: TargetConfig, signal: AbortSignal) {
+async function runOversizeTest(test: PlaybookTest, target: TargetConfig, ctx: RunContext) {
   const cfg = test.oversize!;
   const filler = cfg.filler || "lorem ipsum ";
   const reps = Math.max(1, Math.min(cfg.repeat, Math.floor(MAX_OVERSIZE_CHARS / filler.length)));
   const prompt = `${test.turns[0]}\n\n${filler.repeat(reps)}`;
-  const call = await callTarget(target, prompt, [], signal);
+  const call = await callPolitely(target, prompt, [], ctx);
   const slowMs = cfg.slowMs ?? 15_000;
   const stats = { "input chars": prompt.length, "approx tokens": Math.round(prompt.length / 4), "latency (ms)": call.latencyMs };
 
@@ -339,11 +417,22 @@ export async function runAudit(opts: {
     emit({ type: "log", level: "warn", message });
   };
 
+  const noted = new Set<string>();
+  const ctx: RunContext = {
+    signal,
+    lastRetryAfterMs: null,
+    note: (message) => {
+      if (noted.has(message)) return;
+      noted.add(message);
+      emit({ type: "log", level: "info", message });
+    },
+  };
+
   // ── Attacker mode: a model drives one adaptive campaign per selected category ──
   if (opts.attack?.enabled) {
-    await runAttackerMode({ ...opts, summary, warnOnce });
+    const stopped = await runAttackerMode({ ...opts, summary, warnOnce, ctx });
     summary.durationMs = Date.now() - started;
-    emit({ type: "done", summary, aborted: signal.aborted });
+    emit({ type: "done", summary, aborted: signal.aborted, halted: stopped ?? undefined });
     return;
   }
 
@@ -367,7 +456,17 @@ export async function runAudit(opts: {
 
   emit({ type: "start", total: queue.length, startedAt: new Date(started).toISOString() });
 
-  for (let i = 0; i < queue.length; i++) {
+  // Pre-flight: one hello before anything else. If the app is down, rate-limiting or answering
+  // with errors, stop here with one clear reason instead of an error on every card.
+  const host = checkTargetUrl(target.url).url?.host ?? "your app";
+  let halted: string | null = queue.length ? await preflight(target, ctx) : null;
+  // Circuit breaker: how many tests in a row failed for a reason that will keep repeating.
+  let blockedStreak = 0;
+
+  for (let i = 0; i < queue.length && !halted; i++) {
+    if (signal.aborted) break;
+    // Gentle pacing, so a run of ordinary tests doesn't look like a flood to the app's rate limiter.
+    await sleep(pacingMs(), signal);
     if (signal.aborted) break;
     const { pb, test } = queue[i];
     const kind = test.kind ?? "prompt";
@@ -384,10 +483,10 @@ export async function runAudit(opts: {
         ({ turns, evaluation, stats } = await runBurstTest(test, target, signal));
         turns.forEach((turn) => emit({ type: "turn", testId: test.id, turn }));
       } else if (kind === "oversize") {
-        ({ turns, evaluation, stats } = await runOversizeTest(test, target, signal));
+        ({ turns, evaluation, stats } = await runOversizeTest(test, target, ctx));
         turns.forEach((turn) => emit({ type: "turn", testId: test.id, turn }));
       } else {
-        const run = await runPromptTest(test, target, emit, signal, warnOnce);
+        const run = await runPromptTest(test, target, emit, signal, warnOnce, ctx);
         turns = run.turns;
         // If any request failed, the test didn't complete and must not be graded Pass or Warn.
         // The one exception: a leak caught in the turns that did succeed is still a real Fail.
@@ -441,10 +540,17 @@ export async function runAudit(opts: {
     }
     summary[verdict]++;
     emit({ type: "result", result });
+
+    // Two tests in a row rate-limited or unanswered: the rest would fail the same way. Stop.
+    const block = verdict === "error" ? blockage(turns) : null;
+    blockedStreak = block ? blockedStreak + 1 : 0;
+    if (block && blockedStreak >= BREAKER_THRESHOLD && i < queue.length - 1) {
+      halted = haltReason(block, host, ctx.lastRetryAfterMs);
+    }
   }
 
   summary.durationMs = Date.now() - started;
-  emit({ type: "done", summary, aborted: signal.aborted });
+  emit({ type: "done", summary, aborted: signal.aborted, halted: halted ?? undefined });
 }
 
 async function runAttackerMode(opts: {
@@ -457,14 +563,15 @@ async function runAttackerMode(opts: {
   signal: AbortSignal;
   summary: { pass: number; warn: number; fail: number; error: number; durationMs: number };
   warnOnce: (key: string, message: string) => void;
-}) {
-  const { playbooks, target, judge, emit, signal, summary, warnOnce } = opts;
+  ctx: RunContext;
+}): Promise<string | null> {
+  const { playbooks, target, judge, emit, signal, summary, warnOnce, ctx } = opts;
   const maxTurns = Math.min(Math.max(2, opts.attack?.maxTurns ?? 8), MAX_ATTACK_TURNS);
 
   if (judge.mode !== "judge" || !judge.model?.trim()) {
     emit({ type: "log", level: "error", message: "Attacker mode needs a connected model — it generates the attacks. Pick a model or turn attacker mode off." });
     emit({ type: "start", total: 0, startedAt: new Date().toISOString() });
-    return;
+    return null;
   }
 
   // One campaign per selected category that has an attacker objective.
@@ -482,9 +589,12 @@ async function runAttackerMode(opts: {
   emit({ type: "start", total: campaigns.length, startedAt: new Date().toISOString() });
   if (campaigns.length === 0) {
     emit({ type: "log", level: "warn", message: "No conversational categories selected for attacker mode." });
-    return;
+    return null;
   }
   const host = checkTargetUrl(target.url).url?.host ?? "your localhost target";
+  // Same pre-flight as standard mode: don't start a campaign against an app that isn't answering.
+  const notReady = await preflight(target, ctx);
+  if (notReady) return notReady;
   emit({
     type: "log",
     level: "info",
@@ -496,7 +606,10 @@ async function runAttackerMode(opts: {
     warnOnce("stateless-attack", "Your body template doesn't use {{messages}}, so the app sees each attack with no memory of earlier turns. Use {{messages}} for a true multi-turn attack.");
   }
 
+  let blockedStreak = 0;
   for (let i = 0; i < campaigns.length; i++) {
+    if (signal.aborted) break;
+    await sleep(pacingMs(), signal);
     if (signal.aborted) break;
     const pb = campaigns[i];
     const testId = `attack:${pb.id}`;
@@ -510,7 +623,7 @@ async function runAttackerMode(opts: {
       maxTurns,
       signal,
       fire: async (prompt, history) => {
-        const call = await callTarget(target, prompt, history, signal);
+        const call = await callPolitely(target, prompt, history, ctx);
         // Same rule as standard mode: an API error is a failed request, not a reply to grade.
         return { text: call.text, status: call.status, latencyMs: call.latencyMs, error: targetFailure(call) ?? undefined };
       },
@@ -544,6 +657,13 @@ async function runAttackerMode(opts: {
     }
     summary[result.verdict]++;
     emit({ type: "result", result });
+
+    const block = result.verdict === "error" ? blockage(result.turns) : null;
+    blockedStreak = block ? blockedStreak + 1 : 0;
+    if (block && blockedStreak >= BREAKER_THRESHOLD && i < campaigns.length - 1) {
+      return haltReason(block, host, ctx.lastRetryAfterMs);
+    }
   }
+  return null;
 }
 

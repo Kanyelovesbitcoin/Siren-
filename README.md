@@ -184,11 +184,14 @@ Each result's **Technical details** drawer shows which layer decided it, in this
 | **AI grader** | Your model reads the transcript (treated as untrusted data) and returns pass / warn / fail with a reason. |
 | **Built-in rules** | No AI grader configured (the default) → refusal-language detection. Ambiguous cases become **Warn** so you review them. |
 
-Three things keep the score honest:
+Six things keep the score honest:
 
 - **API errors are never graded.** If your app answers a test with a non-2xx status or a JSON error body such as `{"error": "Failed to get AI response"}`, that test is marked **Error** and left out of the Hardening Score. It is never a Pass or a Warn. (A leak caught earlier in the same test still counts as a Fail.) The load tests are the exception by design: there a rejection is the good outcome, so `413` on an oversized input and `429` under a burst are passes.
 - **Stress tests run last.** Oversized input, then the request burst, always go at the end of the run, so tripping your app's rate limit can't break the tests after it.
 - **Refusals are recognised in many wordings**, including "I am not Nova", "I operate under…", "I can only answer…" and "I do have rules".
+- **A hello before every run.** Before an audit or a re-attack, Siren sends one friendly message. If your app is down, rate-limiting, or answering with errors, the run doesn't start and you get one clear reason instead of an error on every card.
+- **A circuit breaker.** If two tests in a row are rate-limited (HTTP 429) or get no answer (app stopped, timed out), Siren stops the run and says why once, for example "Your app is rate-limiting Siren (HTTP 429). Restart your local app to reset its rate limit, or wait about 30 seconds before re-testing." Tests it didn't reach keep their earlier results.
+- **Gentle pacing.** Siren pauses 300–500 ms between ordinary requests so it doesn't look like a flood to your app's rate limiter, and when your app answers "429, retry after N seconds" (up to 20 seconds) it waits and tries once more instead of recording an error. Set `SIREN_PACING_MS` to change the pause (`0` turns it off).
 
 `npm test` checks these rules (which replies count as a refusal, how the reply is found in a response, and what counts as an API error), so a change to the grading can't quietly move the score.
 
@@ -309,6 +312,7 @@ src/
     attacker.ts            Adaptive red-team engine (plan → fire → assess loop)
     tactics.ts             The 12 tactic families attacker mode rotates through
     summary.ts             Pass / warn / fail counts and the hardening score
+    resilience.ts          Retry-After parsing and the circuit breaker's stop reasons
   data/
     attacker-models.json   Recommended attacker models (edit freely)
     sample-report.json     Saved demo-bot audit shown as the sample report
@@ -325,6 +329,7 @@ Copy `.env.example` to `.env.local`:
 | `SIREN_JUDGE_API_KEY` | Server-side key for OpenRouter / OpenAI-compatible judges |
 | `SIREN_ALLOWED_HOSTS` | Extra exact hostnames allowed as targets (comma-separated) |
 | `SIREN_TARGET_TIMEOUT_MS` | Per-request timeout to your app (default 30000) |
+| `SIREN_PACING_MS` | Pause between ordinary test requests, in ms (default: random 300–500; `0` = off) |
 | `SIREN_PORT` | Default dashboard port for the CLI |
 | `SIREN_DEMO_PORT` | Default demo bot port (default 3001) |
 | `SIREN_CONFIG_FILE` | Where Siren looks for a saved setup (default `siren.config.json` in the Siren folder; `~/.siren/target.json` is also read) |

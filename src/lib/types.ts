@@ -158,6 +158,11 @@ export type AuditEvent =
       type: "done";
       summary: { pass: number; warn: number; fail: number; error: number; durationMs: number };
       aborted?: boolean;
+      /**
+       * Set when Siren stopped the run itself: the pre-flight check failed, or the app started
+       * rate-limiting or stopped answering. One plain-English reason; tests after it did not run.
+       */
+      halted?: string;
     };
 
 export interface AttackConfig {
