@@ -25,15 +25,28 @@ const DEFAULT_TARGET: TargetConfig = {
   canaries: [],
 };
 
-const DEMO_TARGET: TargetConfig = {
-  url: "http://localhost:3001/api/chat",
-  method: "POST",
-  headers: [],
-  bodyTemplate: '{\n  "messages": {{messages}}\n}',
-  responsePath: "data.reply",
-  appContext: "A customer support assistant for Acme Widgets. It should only help with orders, shipping and returns.",
-  canaries: ["ACME-INTERNAL-7f3"],
-};
+const DEMO_PORT = 3001;
+
+/** The bundled demo bot (examples/vulnerable-bot.js). `npm run try` starts it for you. */
+function demoTarget(port: number = DEMO_PORT): TargetConfig {
+  return {
+    url: `http://localhost:${port}/api/chat`,
+    method: "POST",
+    headers: [],
+    bodyTemplate: '{\n  "messages": {{messages}}\n}',
+    responsePath: "data.reply",
+    appContext: "A customer support assistant for Acme Widgets. It should only help with orders, shipping and returns.",
+    canaries: ["ACME-INTERNAL-7f3"],
+  };
+}
+
+/** `npm run try` opens the dashboard at /?demo=1 (plus &demoPort=N for a custom port). */
+function demoPortFromUrl(): number | null {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has("demo")) return null;
+  const port = Number(params.get("demoPort"));
+  return Number.isInteger(port) && port > 0 && port < 65536 ? port : DEMO_PORT;
+}
 
 const DEFAULT_JUDGE: ProviderConfig = {
   provider: "ollama",
@@ -101,14 +114,28 @@ export default function Dashboard() {
   const playbooksRef = useRef<Playbook[]>([]);
   const rerunRef = useRef(false);
   const feedEndRef = useRef<HTMLDivElement | null>(null);
+  const restoredRef = useRef(false);
 
   // Restore saved config (API keys are never persisted).
   useEffect(() => {
+    if (restoredRef.current) return; // run once, even when React re-runs effects in development
+    restoredRef.current = true;
     const saved = loadSaved();
     if (saved?.target) setTarget({ ...DEFAULT_TARGET, ...saved.target });
     if (saved?.judge) setJudge({ ...DEFAULT_JUDGE, ...saved.judge, apiKey: "" });
     if (saved?.attack) setAttack({ ...DEFAULT_ATTACK, ...saved.attack });
     if (saved?.selected) setSelected(new Set(saved.selected));
+
+    // Launched with `npm run try`: the demo bot is already running, so pre-select it with
+    // rules-only grading and every test ticked. "Run audit" then works on the first click.
+    const demoPort = demoPortFromUrl();
+    if (demoPort !== null) {
+      setTarget(demoTarget(demoPort));
+      setJudge((j) => ({ ...j, mode: "heuristic" }));
+      setAttack((a) => ({ ...a, enabled: false }));
+      setSelected(new Set()); // empty → everything gets selected once the playbooks load
+      window.history.replaceState(null, "", window.location.pathname);
+    }
     setHydrated(true);
   }, []);
 
@@ -477,10 +504,10 @@ export default function Dashboard() {
                 </p>
                 <button
                   className="mt-4 text-xs text-gold/90 underline-offset-4 hover:underline"
-                  onClick={() => setTarget(DEMO_TARGET)}
+                  onClick={() => setTarget(demoTarget())}
                   disabled={running}
                 >
-                  No app handy? Use the bundled demo target (npm run demo:target)
+                  No app handy? Use the bundled demo bot (start it with: npm run try)
                 </button>
               </div>
             ) : (

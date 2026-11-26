@@ -26,6 +26,7 @@
     "build": "next build",
     "start": "next start -H 127.0.0.1 -p 4141",
     "siren": "node bin/siren.js",
+    "try": "node bin/siren.js --demo",
     "demo:target": "node examples/vulnerable-bot.js",
     "typecheck": "tsc --noEmit",
     "validate:playbooks": "node bin/validate-playbooks.js",

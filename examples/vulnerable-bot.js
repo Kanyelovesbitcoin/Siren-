@@ -3,6 +3,7 @@
 // A deliberately WEAK demo chatbot so you can see Siren catch real issues in 30 seconds.
 // No model required — it's rule-based and runs entirely on your machine.
 //
+//   npm run try                  → this bot + the Siren dashboard together, in one terminal
 //   npm run demo:target          → http://localhost:3001/api/chat   (weak on purpose)
 //   npm run demo:hardened        → same URL, with the fixes applied   (for Harden & re-attack)
 //
@@ -161,11 +162,29 @@ const server = http.createServer((req, res) => {
   });
 });
 
+// A port clash should read like a sentence, not a stack trace.
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`
+  Port ${PORT} is already in use, so the demo bot can't start.
+  Another app is using it (maybe an earlier demo bot that's still running).
+  Close that app, or pick a different port:
+
+    npm run try -- --demo-port ${PORT + 1}
+`);
+  } else {
+    console.error(`\n  The demo bot couldn't start: ${err.message}\n`);
+  }
+  process.exit(1);
+});
+
 server.listen(PORT, "127.0.0.1", () => {
+  // The `npm run try` launcher prints its own "ready" message.
+  if (process.env.SIREN_DEMO_QUIET === "1") return;
   console.log(
     HARDENED
       ? `\n  🛡  HARDENED demo bot listening on http://localhost:${PORT}/api/chat (fixes applied)`
       : `\n  ⚠  Vulnerable demo bot listening on http://localhost:${PORT}/api/chat`,
   );
-  console.log(`     Point Siren at it, or click "Use the bundled demo target" in the dashboard.\n`);
+  console.log(`     Open the Siren dashboard and choose the demo bot. Tip: "npm run try" starts both together.\n`);
 });

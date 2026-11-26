@@ -10,9 +10,25 @@ Point Siren at the AI endpoint you're building on `localhost`, run the OWASP Top
 
 ---
 
-## Quick start (3 steps)
+## Try it in one command
 
-You need **Node.js 20.9+** ([nodejs.org](https://nodejs.org)). A judge model is optional but recommended. [Ollama](https://ollama.com) is the easiest.
+You need **Node.js 20.9+** ([nodejs.org](https://nodejs.org)). Nothing else: no AI model, no API key, no app of your own.
+
+```bash
+git clone https://github.com/kanyelovesbitcoin/Siren-.git siren && cd siren && npm install
+```
+
+```bash
+npm run try
+```
+
+`npm run try` starts Siren **and** a deliberately weak demo chatbot in the same terminal, waits until both are ready, and opens your browser with the demo bot already selected. Click **Run audit** and you'll see leaks, injections and runaway outputs get caught, plus a few passes where the bot holds up. Press `Ctrl+C` to stop both.
+
+If a port is busy, Siren tells you in plain English which one and prints the command to use a different one (`npm run try -- --port 4242` or `npm run try -- --demo-port 3002`).
+
+## Quick start with your own app
+
+A judge model is optional. [Ollama](https://ollama.com) is the easiest if you want one.
 
 ### macOS
 
@@ -47,15 +63,9 @@ You need **Node.js 20.9+** ([nodejs.org](https://nodejs.org)). A judge model is 
 > Prefer hot reload while hacking on Siren itself? Use `npm run dev`.
 > For the fastest startup, run `npm run build` once; after that `npm run siren` serves the production build.
 
-### No AI app handy? Try the demo target
+### Running the demo bot by hand
 
-Siren ships with a deliberately vulnerable chatbot so you can see it work in 30 seconds:
-
-```bash
-npm run demo:target
-```
-
-Then in the dashboard, click **"Use the bundled demo target"** and hit **Run audit**. You'll see leaks, injections and runaway outputs get caught, plus a few passes where the bot holds up. `npm run demo:hardened` starts the same bot with the fixes applied, which is useful for the Harden & re-attack loop below.
+`npm run try` is the easy way. If you'd rather run the pieces separately, `npm run demo:target` starts just the demo bot on `http://localhost:3001/api/chat`, and `npm run demo:hardened` starts the same bot with the fixes applied, which is useful for the Harden & re-attack loop below.
 
 ---
 
@@ -111,7 +121,7 @@ The loop for turning red into green:
 2. On a Fail/Warn, **Copy Fix Prompt** and apply it in your IDE, then restart your app.
 3. Hit **Re-attack failed** (or **Re-attack** on one card). Only those results re-run, in place, with a **before → after** chip (`FAIL → PASS · Fixed`) and a summary of what you fixed.
 
-Try it with the demo: run `npm run demo:target`, launch an attack, then stop the bot and start `npm run demo:hardened` (same URL, fixes applied) and hit **Re-attack failed**.
+Try it with the demo: in one terminal run `npm run siren`, in another run `npm run demo:target`, and run an audit. Then stop the bot, start `npm run demo:hardened` (same URL, fixes applied) and hit **Re-attack failed**.
 
 ### How verdicts are decided
 
@@ -197,6 +207,8 @@ Keep your own rules outside the repo with `npm run siren -- --playbooks ./my-pla
 ```bash
 npm run siren -- [options]      # or: node bin/siren.js [options]
 
+  --demo               Also start the demo bot, ready to test (same as: npm run try)
+  --demo-port <n>      Demo bot port (default 3001)
   --port, -p <n>       Dashboard port (default 4141)
   --dev                Development mode with hot reload
   --playbooks <dir>    Load playbooks from a custom folder
