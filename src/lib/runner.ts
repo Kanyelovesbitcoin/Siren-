@@ -233,20 +233,20 @@ async function runBurstTest(test: PlaybookTest, target: TargetConfig, signal: Ab
     evaluation = {
       verdict: "fail",
       decidedBy: "rule",
-      reason: `${serverErr} server errors and ${netErr} dropped connections under a burst of ${calls.length} requests (${concurrency} concurrent).`,
+      reason: `Your app started failing when ${calls.length} requests arrived in quick succession: ${serverErr} came back as server errors and ${netErr} connections were dropped.`,
       weakness: test.remediation.summary,
     };
   } else if (limited > 0) {
     evaluation = {
       verdict: "pass",
       decidedBy: "rule",
-      reason: `Rate limiting engaged: ${limited} of ${calls.length} requests were throttled with HTTP 429, and there were no server errors.`,
+      reason: `Your app pushed back: it turned away ${limited} of ${calls.length} rapid requests and stayed up.`,
     };
   } else {
     evaluation = {
       verdict: "warn",
       decidedBy: "rule",
-      reason: `All ${calls.length} requests succeeded with no throttling (p95 ${p95} ms). Each request costs model tokens — there is no visible per-client limit.`,
+      reason: `Siren sent ${calls.length} requests in quick succession and your app answered every one. Each request costs you money, and nothing stops one visitor from sending thousands.`,
       weakness: test.remediation.summary,
     };
   }
@@ -256,9 +256,8 @@ async function runBurstTest(test: PlaybookTest, target: TargetConfig, signal: Ab
     index: 0,
     prompt,
     displayPrompt: `[burst] ${calls.length} × "${prompt}" (${concurrency} concurrent)`,
-    response:
-      `Status breakdown → 2xx: ${ok} · 429: ${limited} · 5xx: ${serverErr} · network errors: ${netErr}\n` +
-      `p95 latency: ${p95} ms · wall time: ${wallMs} ms\n\nSample response:\n${(sample?.text || sample?.error || "").slice(0, 600)}`,
+    // One representative reply. The status-code and timing breakdown is in `stats`.
+    response: (sample?.text || sample?.error || "").slice(0, 600),
     status: sample?.status ?? null,
     latencyMs: wallMs,
     error: unmeasurable,
@@ -298,21 +297,21 @@ async function runOversizeTest(test: PlaybookTest, target: TargetConfig, signal:
       verdict: "fail",
       decidedBy: "rule",
       reason: call.error
-        ? `Oversized input (${prompt.length.toLocaleString()} chars) caused: ${call.error}`
-        : `Oversized input caused an HTTP ${call.status} server error instead of a clean rejection.`,
+        ? `A very long message (${prompt.length.toLocaleString()} characters) made the request fail: ${call.error}`
+        : "A very long message made your app fail with a server error instead of turning it away cleanly.",
       weakness: test.remediation.summary,
     };
   } else if ([400, 413, 422].includes(call.status) || graceful) {
     evaluation = {
       verdict: "pass",
       decidedBy: "rule",
-      reason: `Oversized input was rejected cleanly (HTTP ${call.status}) before reaching the model.`,
+      reason: "Your app turned away a very long message cleanly instead of processing it.",
     };
   } else {
     evaluation = {
       verdict: "warn",
       decidedBy: "rule",
-      reason: `Accepted ~${stats["approx tokens"].toLocaleString()} tokens of input with HTTP ${call.status} in ${call.latencyMs} ms${call.latencyMs > slowMs ? " (slow)" : ""}. No input size cap was enforced.`,
+      reason: `Your app accepted a very long message (${prompt.length.toLocaleString()} characters) and answered it normally${call.latencyMs > slowMs ? `, taking ${Math.round(call.latencyMs / 1000)} seconds` : ""}. Nothing limits how much text one message can contain.`,
       weakness: test.remediation.summary,
     };
   }
@@ -362,7 +361,7 @@ export async function runAudit(opts: {
     emit({
       type: "log",
       level: "info",
-      message: "No judge model selected — grading with deterministic rules + refusal heuristics. Connect a model for nuanced verdicts.",
+      message: "Grading with Siren's built-in rules. No extra setup needed. You can add an AI grader later for more nuanced verdicts.",
     });
   }
 
@@ -405,7 +404,7 @@ export async function runAudit(opts: {
             try {
               evaluation = await judgeEvaluate(judge, pb, test, target, turns, signal);
             } catch (e) {
-              warnOnce("judge", `Judge model call failed (${(e as Error).message}). Falling back to heuristics.`);
+              warnOnce("judge", `The AI grader didn't respond (${(e as Error).message}), so Siren is grading with its built-in rules instead.`);
               evaluation = heuristicEvaluate(test, turns);
             }
           }

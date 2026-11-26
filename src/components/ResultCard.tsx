@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, ChevronDown, Crosshair, RefreshCw, RotateCcw, Sparkles, TriangleAlert } from "lucide-react";
+import { ArrowRight, ChevronDown, ChevronRight, Crosshair, RefreshCw, RotateCcw, Sparkles, TriangleAlert } from "lucide-react";
 import { Chip, CopyButton, SeverityChip, VerdictBadge, cx } from "./ui";
 import { tacticName } from "@/lib/tactics";
 import type { TestResult, TurnOutcome, TurnRecord, Verdict } from "@/lib/types";
@@ -49,66 +49,58 @@ function OutcomeChip({ outcome }: { outcome: TurnOutcome }) {
  * all in the Technical details drawer ("Measurements"), so the main view shows just the reply.
  */
 function splitLoadSummary(response: string): { isSample: boolean; reply: string } {
+  // Older saved results put a "Status breakdown" summary ahead of the sample reply.
   const marker = "\n\nSample response:\n";
   const i = response.indexOf(marker);
   if (i < 0 || !response.startsWith("Status breakdown")) return { isSample: false, reply: response };
   return { isSample: true, reply: response.slice(i + marker.length) };
 }
 
-function TurnRow({ turn, total }: { turn: TurnRecord; total: number }) {
-  const { isSample, reply } = splitLoadSummary(turn.response);
+/**
+ * One reply from the app. The message Siren sent is deliberately not shown here; it is in the
+ * Technical details drawer ("What Siren sent"), so the card leads with what matters.
+ */
+function TurnRow({ turn, total, isSample }: { turn: TurnRecord; total: number; isSample: boolean }) {
+  const { reply } = splitLoadSummary(turn.response);
   return (
-    <div>
+    <div className="rounded-xl border border-line bg-charcoal-2/70 p-3.5">
       {turn.freshConversation && (
         <p className="mb-1.5 flex items-center gap-2 text-[10.5px] tracking-wide text-muted uppercase">
           <RotateCcw className="size-3" /> Fresh conversation — earlier turns cleared
         </p>
       )}
-      <div className="grid gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-2">
-        <div className="bg-obsidian p-3.5">
-          <p className="mb-1.5 flex items-center gap-2 text-[10.5px] font-semibold tracking-wider text-muted uppercase">
-            <span className="size-1.5 rounded-full bg-gold/80" />
-            Siren{total > 1 ? ` · attempt ${turn.index + 1}` : ""}
-            {turn.tactic && (
-              <span className="rounded border border-gold/30 px-1 py-px font-medium tracking-normal text-gold/90 normal-case">
-                {tacticName(turn.tactic)}
-              </span>
-            )}
-          </p>
-          {turn.attackerThought && (
-            <p className="mb-2 flex gap-1.5 rounded-md border border-gold/20 bg-gold/[0.06] px-2 py-1.5 text-[11.5px] leading-relaxed text-gold/90">
-              <Crosshair className="mt-px size-3 shrink-0" />
-              <span>
-                <span className="font-semibold">Plan:</span> {turn.attackerThought}
-              </span>
-            </p>
-          )}
-          <p className="max-h-56 overflow-auto font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-ink-dim scroll-quiet">
-            {turn.displayPrompt}
-          </p>
-        </div>
-        <div className="bg-charcoal-2/70 p-3.5">
-          <p className="mb-1.5 flex items-center gap-2 text-[10.5px] font-semibold tracking-wider text-muted uppercase">
-            <span className="size-1.5 rounded-full bg-ink-dim" />
-            Your app{isSample ? " · one of the replies" : ""}
-          </p>
-          {turn.error ? (
-            <p className="text-[12.5px] text-fail">{turn.error}</p>
-          ) : (
-            <p className="max-h-56 overflow-auto text-[13px] leading-relaxed whitespace-pre-wrap text-ink scroll-quiet">
-              {reply || <span className="text-muted italic">(empty response)</span>}
-            </p>
-          )}
-          {turn.assessment && (
-            <p className="mt-2 flex flex-wrap items-start gap-1.5 border-t border-line pt-2 text-[11.5px] leading-relaxed text-muted">
-              {turn.outcome && <OutcomeChip outcome={turn.outcome} />}
-              <span>
-                <span className="font-semibold text-ink-dim">Read:</span> {turn.assessment}
-              </span>
-            </p>
-          )}
-        </div>
-      </div>
+      <p className="mb-1.5 flex flex-wrap items-center gap-2 text-[10.5px] font-semibold tracking-wider text-muted uppercase">
+        <span className="size-1.5 rounded-full bg-ink-dim" />
+        {isSample ? "One of your app\u2019s replies" : `Your app replied${total > 1 ? ` · ${turn.index + 1} of ${total}` : ""}`}
+        {turn.tactic && (
+          <span className="rounded border border-gold/30 px-1 py-px font-medium tracking-normal text-gold/90 normal-case">
+            Tactic: {tacticName(turn.tactic)}
+          </span>
+        )}
+      </p>
+      {turn.attackerThought && (
+        <p className="mb-2 flex gap-1.5 rounded-md border border-gold/20 bg-gold/[0.06] px-2 py-1.5 text-[11.5px] leading-relaxed text-gold/90">
+          <Crosshair className="mt-px size-3 shrink-0" />
+          <span>
+            <span className="font-semibold">Siren&apos;s plan:</span> {turn.attackerThought}
+          </span>
+        </p>
+      )}
+      {turn.error ? (
+        <p className="text-[12.5px] leading-relaxed text-fail">{turn.error}</p>
+      ) : (
+        <p className="max-h-56 overflow-auto text-[13px] leading-relaxed whitespace-pre-wrap text-ink scroll-quiet">
+          {reply || <span className="text-muted italic">(empty response)</span>}
+        </p>
+      )}
+      {turn.assessment && (
+        <p className="mt-2 flex flex-wrap items-start gap-1.5 border-t border-line pt-2 text-[11.5px] leading-relaxed text-muted">
+          {turn.outcome && <OutcomeChip outcome={turn.outcome} />}
+          <span>
+            <span className="font-semibold text-ink-dim">Read:</span> {turn.assessment}
+          </span>
+        </p>
+      )}
     </div>
   );
 }
@@ -160,8 +152,9 @@ function ChangeChip({ before, after }: { before: Verdict; after: Verdict }) {
 }
 
 /**
- * Everything a developer wants and a beginner doesn't: test ID, OWASP code, which layer decided
- * the verdict, HTTP status codes, response times and load-test measurements. Collapsed by default.
+ * Everything a developer wants and a beginner doesn't: the raw messages Siren sent, test ID,
+ * OWASP code, which layer decided the verdict, HTTP status codes, response times and load-test
+ * measurements. Collapsed by default.
  */
 function TechnicalDetails({ live }: { live: LiveTest }) {
   const r = live.result;
@@ -215,6 +208,22 @@ function TechnicalDetails({ live }: { live: LiveTest }) {
           </table>
         )}
 
+        {live.turns.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-[10.5px] font-semibold tracking-wider text-muted uppercase">What Siren sent</p>
+            <div className="space-y-2">
+              {live.turns.map((t) => (
+                <div key={t.index} className="rounded-lg border border-line bg-obsidian p-2.5">
+                  {live.turns.length > 1 && <p className="mb-1 text-[10.5px] text-muted">Attempt {t.index + 1}</p>}
+                  <p className="max-h-48 overflow-auto font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-ink-dim scroll-quiet">
+                    {t.displayPrompt}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {r?.stats && (
           <div>
             <p className="mb-1.5 text-[10.5px] font-semibold tracking-wider text-muted uppercase">Measurements</p>
@@ -232,24 +241,36 @@ function TechnicalDetails({ live }: { live: LiveTest }) {
   );
 }
 
+/** The numbered circle used in the fix steps. */
+function StepNumber({ n }: { n: number }) {
+  return (
+    <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-gold/40 font-mono text-[11px] text-gold">
+      {n}
+    </span>
+  );
+}
+
 export default function ResultCard({
   live,
   running,
   onRerun,
-  defaultOpen = true,
+  open,
+  onToggle,
 }: {
   live: LiveTest;
   running: boolean;
   /** Leave out for a read-only card (the sample report): the re-attack buttons disappear. */
   onRerun?: () => void;
-  /** Start collapsed, e.g. in the sample report where only the first problem is opened. */
-  defaultOpen?: boolean;
+  /** Whether the card is expanded. The list that renders the cards owns this. */
+  open: boolean;
+  onToggle: () => void;
 }) {
   const r = live.result;
   const needsFix = r && (r.verdict === "fail" || r.verdict === "warn");
-  const [open, setOpen] = useState(defaultOpen);
   const [showPrompt, setShowPrompt] = useState(false);
   const isCampaign = live.turns.some((t) => t.tactic);
+  // Shown under the title while the card is collapsed: the plain-English point of this result.
+  const preview = r ? (r.verdict === "fail" || r.verdict === "warn" ? r.weakness || r.reason : r.verdict === "error" ? r.reason : "") : "";
 
   return (
     <article
@@ -260,7 +281,7 @@ export default function ResultCard({
       )}
     >
       <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
-        <button className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 text-left" onClick={() => setOpen((o) => !o)}>
+        <button className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 text-left" onClick={onToggle} aria-expanded={open}>
           <VerdictBadge verdict={r ? r.verdict : "running"} />
           <span className="text-sm font-medium text-ink">{live.testName}</span>
           {r && <SeverityChip severity={r.severity} />}
@@ -278,18 +299,23 @@ export default function ResultCard({
               Re-attack
             </button>
           )}
-          <button aria-label={open ? "Collapse" : "Expand"} onClick={() => setOpen((o) => !o)}>
+          <button aria-label={open ? "Collapse" : "Expand"} onClick={onToggle}>
             <ChevronDown className={cx("size-4 transition", !open && "-rotate-90")} />
           </button>
         </span>
       </div>
+      {!open && preview && (
+        <button className="-mt-1 block w-full px-4 pb-3 text-left" onClick={onToggle} tabIndex={-1}>
+          <span className="line-clamp-2 text-[12.5px] leading-relaxed text-ink-dim">{preview}</span>
+        </button>
+      )}
 
       {open && (
         <div className="space-y-3 border-t border-line px-4 pt-3 pb-4">
           {isCampaign && <TacticStrip turns={live.turns} />}
           {live.turns.length === 0 && !r && <p className="text-xs text-muted">{isCampaign ? "Planning first attack…" : "Sending first turn…"}</p>}
           {live.turns.map((t) => (
-            <TurnRow key={t.index} turn={t} total={live.turns.length} />
+            <TurnRow key={t.index} turn={t} total={live.turns.length} isSample={r?.kind === "burst"} />
           ))}
           {running && !r && live.turns.length > 0 && isCampaign && (
             <p className="flex items-center gap-2 text-xs text-gold/80">
@@ -313,28 +339,32 @@ export default function ResultCard({
                   <p className="mt-1 text-[13px] leading-relaxed text-ink-dim">{r.weakness}</p>
                 </div>
               </div>
-              <ol className="mt-3 flex flex-wrap items-center gap-2 pl-7 text-[11px] text-muted">
-                <li className="flex items-center gap-2">
-                  <span className="font-mono text-gold/80">1</span>
-                  <CopyButton text={r.fixPrompt} label="Copy Fix Prompt" variant="gold" />
+              {/* The fix, as one bar: copy → paste → re-test. Stacks on narrow screens. */}
+              <ol className="mt-4 flex flex-col overflow-hidden rounded-xl border border-line bg-obsidian/60 text-[12.5px] text-ink-dim sm:flex-row sm:items-stretch">
+                <li className="flex items-center gap-2.5 px-3 py-2.5">
+                  <StepNumber n={1} />
+                  <CopyButton text={r.fixPrompt} label="Copy Fix Prompt" variant="gold" className="px-3 py-1.5 text-[13px] whitespace-nowrap" />
                 </li>
-                <li className="flex items-center gap-2">
-                  <span className="font-mono text-gold/80">2</span> Paste into Claude Code, Cursor or Copilot and apply the fix
+                <li className="flex flex-1 items-center gap-2.5 border-t border-line px-3 py-2.5 sm:border-t-0 sm:border-l">
+                  <ChevronRight className="-ml-1 hidden size-4 shrink-0 text-muted sm:block" />
+                  <StepNumber n={2} />
+                  <span>Paste it into Claude Code or Cursor</span>
                 </li>
                 {onRerun && (
-                  <li className="flex items-center gap-2">
-                    <span className="font-mono text-gold/80">3</span>
+                  <li className="flex items-center gap-2.5 border-t border-line px-3 py-2.5 sm:border-t-0 sm:border-l">
+                    <ChevronRight className="-ml-1 hidden size-4 shrink-0 text-muted sm:block" />
+                    <StepNumber n={3} />
                     <button
                       onClick={onRerun}
                       disabled={running}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-gold/40 px-2.5 py-1.5 text-xs text-gold transition hover:bg-gold/10 disabled:opacity-40"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-gold/40 px-2.5 py-1.5 text-xs whitespace-nowrap text-gold transition hover:bg-gold/10 disabled:opacity-40"
                     >
                       <RefreshCw className="size-3.5" /> Re-attack to verify
                     </button>
                   </li>
                 )}
               </ol>
-              <button className="mt-2 ml-7 flex items-center gap-1.5 text-xs text-muted hover:text-gold" onClick={() => setShowPrompt((s) => !s)}>
+              <button className="mt-2.5 flex items-center gap-1.5 text-xs text-muted hover:text-gold" onClick={() => setShowPrompt((s) => !s)}>
                 <Sparkles className="size-3.5" />
                 {showPrompt ? "Hide" : "Preview"} fix prompt
               </button>

@@ -104,7 +104,7 @@ export function deterministicChecks(
     return {
       verdict: "warn",
       decidedBy: "rule",
-      reason: `Response was ${allText.length.toLocaleString()} characters (limit for this test: ${d.maxResponseChars.toLocaleString()}). Output length isn't being capped.`,
+      reason: `Your app wrote a ${allText.length.toLocaleString()}-character reply when asked to. Nothing limits how long a reply can get.`,
       weakness: test.remediation.summary,
     };
   }
@@ -121,14 +121,14 @@ export function heuristicEvaluate(test: PlaybookTest, turns: TurnRecord[]): Eval
           verdict: "warn",
           decidedBy: "heuristic",
           reason:
-            "No refusal detected and no rule fired. Connect a judge model to grade this response properly — review it manually for now.",
+            "Siren's built-in rules couldn't tell whether your app refused. Read the reply and decide. An AI grader can judge cases like this for you.",
           weakness: test.remediation.summary,
         };
   }
   return {
     verdict: "pass",
     decidedBy: "heuristic",
-    reason: "No deterministic leak markers found. A judge model gives a more nuanced grade.",
+    reason: "Nothing in the reply matched the signs of a problem for this test.",
   };
 }
 
@@ -192,7 +192,7 @@ Return the JSON verdict now.`;
   const parsed = parseJudgeOutput(out);
   if (!parsed) {
     const h = heuristicEvaluate(test, turns);
-    return { ...h, reason: `Judge reply was not valid JSON, fell back to heuristics. ${h.reason}` };
+    return { ...h, reason: `The AI grader's answer couldn't be read, so Siren used its built-in rules. ${h.reason}` };
   }
   return {
     verdict: parsed.verdict,

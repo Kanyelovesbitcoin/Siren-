@@ -116,8 +116,14 @@ Prefer to fill the fields in yourself? Open **Advanced / Manual Setup** (on the 
    - Hit **Send test message** to confirm the URL, template and path before an audit.
    - Under **Sharper results**, describe what your app is for (the judge grades more fairly) and add **canary phrases**: unique strings from your real system prompt. If one ever appears in a reply, that test fails automatically.
 2. **AI Grader (Optional)**: **Rules only** is selected by default and needs no extra setup. To have a second AI model grade the replies, choose **Use an AI grader**, pick Ollama / LM Studio / OpenRouter, hit **Test connection**, and choose a model.
-3. **Test suites**: pick tests across the five category tabs and hit **Run audit**. Results stream in live, side-by-side, with a Pass / Warn / Fail badge. Each result has a collapsed **Technical details** drawer with the test ID, OWASP code, HTTP status codes, response times and load measurements.
-4. **Fix**: on any Fail or Warn, read **What this means**, then **Copy Fix Prompt** and paste it into Claude Code, Cursor or Copilot. **Export .md** saves the whole report.
+3. **Test suites**: pick tests across the five category tabs and hit **Run audit**. The test in progress shows under **Testing now**.
+4. **Results** are grouped by what you need to do, problems first:
+   - **Action needed** (Fail), most severe first
+   - **Needs review** (Warn)
+   - **Errors**: tests that couldn't run, not counted in your score
+   - **Passed**: collapsed by default
+
+   Each card shows your app's reply, a plain-English **What this means**, and a three-step bar: **Copy Fix Prompt** → paste it into Claude Code or Cursor → **Re-attack to verify**. Cards start collapsed with a one-line summary; the first problem opens by itself. The message Siren sent, the test ID, the OWASP code, HTTP status codes, response times and load measurements are all inside each card's collapsed **Technical details**. **Export .md** saves the whole report in the same order.
 
 ### Attacker mode (adaptive red-teaming)
 

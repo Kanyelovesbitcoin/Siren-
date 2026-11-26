@@ -86,11 +86,10 @@ export default function ProviderPanel({
             <span className="min-w-0">
               <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
                 Rules only
-                <span className="rounded-md border border-gold/30 bg-gold/10 px-1.5 py-px text-[10px] font-medium tracking-wide text-gold/90 uppercase">
-                  Default
+                <span className="rounded-md border border-pass/30 bg-pass/10 px-1.5 py-px text-[10.5px] font-medium text-pass">
+                  No extra setup needed.
                 </span>
               </span>
-              <span className="mt-0.5 block text-[13px] font-medium text-pass">No extra setup needed.</span>
               <span className="mt-1 block text-xs leading-relaxed text-muted">
                 Siren checks every reply against its built-in rules. Fast, and nothing to install.
               </span>

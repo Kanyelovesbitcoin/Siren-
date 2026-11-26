@@ -1,7 +1,8 @@
 "use client";
 
 import { ArrowRight, Monitor } from "lucide-react";
-import ResultCard, { type LiveTest } from "./ResultCard";
+import { type LiveTest } from "./ResultCard";
+import ResultGroups from "./ResultGroups";
 import ScoreTiles from "./ScoreTiles";
 import { CopyButton } from "./ui";
 import sample from "@/data/sample-report.json";
@@ -18,8 +19,6 @@ const CARDS: LiveTest[] = RESULTS.map((r) => ({
   result: r,
 }));
 const SUMMARY = summarize(RESULTS);
-/** Open the first problem so the "what this means" and Copy Fix Prompt flow is visible straight away. */
-const FIRST_PROBLEM = CARDS.find((c) => c.result?.verdict === "fail")?.testId ?? CARDS[0]?.testId;
 
 /**
  * A read-only sample audit report. It is built from a saved, real audit of the demo bot and
@@ -79,11 +78,8 @@ export default function SampleReport({
         or Cursor to fix it.
       </div>
 
-      <div className="space-y-3">
-        {CARDS.map((card) => (
-          <ResultCard key={card.testId} live={card} running={false} defaultOpen={card.testId === FIRST_PROBLEM} />
-        ))}
-      </div>
+      {/* Same grouped list as the live dashboard. The first problem starts open; read-only, so no re-attack. */}
+      <ResultGroups items={CARDS} running={false} />
 
       <div className="rounded-2xl border border-line bg-charcoal p-5 text-center">
         <p className="text-[15px] font-semibold text-ink">Want this for your own AI app?</p>

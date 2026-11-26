@@ -9,7 +9,8 @@ import TargetPanel from "./TargetPanel";
 import ProviderPanel from "./ProviderPanel";
 import SuitePanel from "./SuitePanel";
 import AttackerBar from "./AttackerBar";
-import ResultCard, { type LiveTest } from "./ResultCard";
+import { type LiveTest } from "./ResultCard";
+import ResultGroups from "./ResultGroups";
 import { Button, Card, cx } from "./ui";
 import { checkTargetUrl } from "@/lib/safety";
 import { summarize } from "@/lib/summary";
@@ -64,20 +65,6 @@ const DEFAULT_JUDGE: ProviderConfig = {
   model: "",
   mode: "heuristic",
 };
-
-/**
- * The audit engine's progress notes are written for developers. Reword them for display
- * only; the engine itself is untouched.
- */
-function plainLog(message: string): string {
-  if (message.startsWith("No judge model selected")) {
-    return "Grading with Siren's built-in rules. No extra setup needed. You can add an AI grader later for more nuanced verdicts.";
-  }
-  return message
-    .replace(/\bJudge model\b/g, "AI grader")
-    .replace(/\bjudge model\b/g, "AI grader")
-    .replace(/\bheuristics\b/g, "built-in rules");
-}
 
 const DEFAULT_ATTACK: AttackConfig = { enabled: false, maxTurns: 8 };
 
@@ -143,7 +130,8 @@ function toMarkdown(results: TestResult[], target: TargetConfig, startedAt: stri
     `- Results: ${counts.pass} pass · ${counts.warn} warn · ${counts.fail} fail · ${counts.error} error`,
     ``,
   ];
-  for (const r of results) {
+  const order = { fail: 0, warn: 1, error: 2, pass: 3 } as const;
+  for (const r of [...results].sort((a, b) => order[a.verdict] - order[b.verdict])) {
     lines.push(`## [${r.verdict.toUpperCase()}] ${r.testName}`, ``, `${r.owasp} · ${r.playbookTitle} · severity ${r.severity} · decided by ${r.decidedBy}`, ``);
     lines.push(`**Verdict:** ${r.reason}`, ``);
     for (const t of r.turns) {
@@ -181,7 +169,7 @@ export default function Dashboard() {
   const abortRef = useRef<AbortController | null>(null);
   const playbooksRef = useRef<Playbook[]>([]);
   const rerunRef = useRef(false);
-  const feedEndRef = useRef<HTMLDivElement | null>(null);
+  const resultsRef = useRef<HTMLDivElement | null>(null);
   const restoredRef = useRef(false);
 
   // Restore saved config (API keys are never persisted).
@@ -307,7 +295,11 @@ export default function Dashboard() {
     switch (e.type) {
       case "start":
         // During a re-attack the total is set up front (it may span two requests).
-        if (!rerunRef.current) setProgress({ done: 0, total: e.total });
+        if (!rerunRef.current) {
+          setProgress({ done: 0, total: e.total });
+          // Bring the results into view; the test in progress shows at the top of them.
+          requestAnimationFrame(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+        }
         setStartedAt(e.startedAt);
         break;
       case "test-start": {
@@ -321,7 +313,6 @@ export default function Dashboard() {
           next[i] = { ...fresh, previousVerdict: prev[i].result?.verdict ?? prev[i].previousVerdict };
           return next;
         });
-        if (!rerunRef.current) requestAnimationFrame(() => feedEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
         break;
       }
       case "turn":
@@ -332,7 +323,7 @@ export default function Dashboard() {
         setProgress((p) => ({ ...p, done: p.done + 1 }));
         break;
       case "log":
-        setLogs((prev) => [...prev, { level: e.level, message: plainLog(e.message) }]);
+        setLogs((prev) => [...prev, { level: e.level, message: e.message }]);
         break;
       case "done":
         if (e.aborted) setLogs((prev) => [...prev, { level: "warn", message: "Audit stopped." }]);
@@ -682,6 +673,7 @@ export default function Dashboard() {
             onStop={() => abortRef.current?.abort()}
           />
 
+          <div ref={resultsRef} className="scroll-mt-20">
           <Card
             title="Results"
             icon={<Radio className="size-4" />}
@@ -779,14 +771,10 @@ export default function Dashboard() {
                 </button>
               </div>
             ) : (
-              <div className="space-y-3">
-                {live.map((l) => (
-                  <ResultCard key={l.testId} live={l} running={running} onRerun={() => reattack([l.testId])} />
-                ))}
-                <div ref={feedEndRef} />
-              </div>
+              <ResultGroups items={live} running={running} onRerun={(id) => reattack([id])} />
             )}
           </Card>
+          </div>
         </div>
       </main>
       )}
