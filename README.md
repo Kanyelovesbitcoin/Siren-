@@ -79,13 +79,19 @@ One click runs the full audit against the bundled practice chatbot. It needs the
 
 ### Connect My App
 
-You don't need to know your app's "endpoint" or request format. Your coding agent works it out:
+You don't need to know your app's "endpoint" or request format, and you don't need your app to be running yet. Your coding agent handles both:
 
 1. Click **Copy Setup Prompt for Claude Code / Cursor**.
-2. Open your app's folder in Claude Code or Cursor, paste the prompt, and send it. The agent reads your code and replies with a small setup block (your app's local address, what it expects to receive, and where the reply is).
-3. Paste that block into Siren and click **Use this setup**. If the agent was able to save the block as `siren.config.json` in the Siren folder (the prompt gives it the exact path), Siren loads it by itself and offers a **Use this setup** button, so there's nothing to paste.
+2. Open your app's folder in Claude Code or Cursor, paste the prompt, and send it. The agent reads your code, starts your app if it isn't running, sends it a test message to check the setup works, and saves the setup as `siren.config.json` in the Siren folder (the prompt gives it the exact path).
+3. That's it. Siren notices the file, says hello to your app, and **starts the audit by itself**. If the agent couldn't save the file, paste the block it printed into Siren and click **Use this setup**.
 
-Siren then says hello to your app and shows you the reply. If it looks like your chatbot talking, hit **Run audit**. If your app answers with an error, Siren shows that error instead; and if the reply was under a different key than the setup said, Siren finds it and saves the right one.
+Untick **Start the audit as soon as my app connects** if you'd rather look at the hello reply first and press **Run audit** yourself.
+
+**If something goes wrong, there is a prompt for that too:**
+
+- **Siren can't reach your app, or your app answers with an error:** the banner shows what happened and a **Copy Fix Prompt for Claude Code / Cursor** button. The prompt contains the exact request Siren sent (header values are hidden) and the error, and asks the agent to start the app, find the cause and save a setup that works. Siren keeps checking every few seconds and connects by itself as soon as your app answers.
+- **A test comes back as an Error during an audit:** that card has its own **Copy Fix Prompt**, with the message that failed and what came back.
+- **A different key than expected:** if the reply was under, say, `answer` instead of what the setup said, Siren finds it and saves the right one.
 
 The setup block looks like this, in case you want to write one by hand:
 
@@ -184,6 +190,12 @@ Three things keep the score honest:
 - **Stress tests run last.** Oversized input, then the request burst, always go at the end of the run, so tripping your app's rate limit can't break the tests after it.
 - **Refusals are recognised in many wordings**, including "I am not Nova", "I operate under…", "I can only answer…" and "I do have rules".
 
+`npm test` checks these rules (which replies count as a refusal, how the reply is found in a response, and what counts as an API error), so a change to the grading can't quietly move the score.
+
+### Accessibility
+
+Siren is built to WCAG 2.1 AA: every control has a name and a visible focus outline, results can be navigated by heading, audit progress and completion are announced to screen readers, colours meet contrast on every surface, and nothing scrolls sideways at 400% zoom. An automated axe-core scan of the start screen, the results view and the phone sample reports no violations.
+
 ---
 
 ## The starter playbooks
@@ -273,6 +285,7 @@ Run `npm link` in this folder to get a global `siren` command. Once published to
 bin/
   siren.js                 CLI launcher (binds 127.0.0.1, opens browser)
   validate-playbooks.js    Playbook linter
+  test-grading.js          Checks the grading rules (npm test)
 playbooks/                 OWASP test suites as JSON (loaded at runtime)
 examples/
   vulnerable-bot.js        Demo target on :3001 (weak by default, --hardened for the fixed version)

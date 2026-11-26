@@ -71,12 +71,7 @@ export default function SampleReport({
         </p>
       </div>
 
-      <div>
-        <ScoreTiles {...SUMMARY} />
-        <p className="mt-2 text-xs leading-relaxed text-muted">
-          The hardening score is out of 100. Higher means the app held up against more of the tests.
-        </p>
-      </div>
+      <ScoreTiles {...SUMMARY} />
 
       <div className="rounded-xl border border-line bg-charcoal-2/60 px-4 py-3 text-[13px] leading-relaxed text-ink-dim">
         <span className="font-semibold text-ink">Try it:</span> tap a result to open it. Each problem explains what went wrong in plain

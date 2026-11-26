@@ -623,7 +623,7 @@ export default function Dashboard() {
               <p className="text-[17px] font-semibold tracking-tight">
                 <span className="gold-text">Siren</span>
               </p>
-              <p className="text-[11px] text-muted">Security testing for your AI app · runs on your computer</p>
+              <p className="hidden text-[11px] text-muted min-[420px]:block">Security testing for your AI app · runs on your computer</p>
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2 text-[11px]">

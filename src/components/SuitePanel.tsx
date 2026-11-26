@@ -134,8 +134,8 @@ export default function SuitePanel({
                   <Icon className={cx("size-4", isActive ? "text-gold" : "text-muted group-hover:text-ink-dim")} />
                   <span className="flex flex-col">
                     <span className={cx("text-[13px] font-medium", isActive ? "text-ink" : "text-ink-dim")}>{p.shortTitle}</span>
-                    <span className="font-mono text-[10px] text-muted">
-                      {p.owasp} · {sel}/{p.tests.length}
+                    <span className="text-[10.5px] text-muted">
+                      {sel} of {p.tests.length} selected
                     </span>
                   </span>
                 </button>
@@ -149,7 +149,7 @@ export default function SuitePanel({
                 <div className="max-w-2xl">
                   <h3 className="text-[15px] font-semibold text-ink">{current.title}</h3>
                   <p className="mt-0.5 font-mono text-[11px] text-gold/80">
-                    OWASP {current.owasp} · {current.owaspName}
+                    {current.owaspName} <span className="text-muted">· OWASP {current.owasp}</span>
                   </p>
                   <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">{current.description}</p>
                 </div>
@@ -177,9 +177,9 @@ export default function SuitePanel({
                       />
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-medium text-ink">{t.name}</span>
+                          <span className="text-sm font-medium text-ink" title={`Test ID: ${t.id}`}>{t.name}</span>
                           <SeverityChip severity={t.severity} />
-                          <Chip>{t.id}</Chip>
+                          {/* The test ID is in each result's Technical details. */}
                           {t.kind && t.kind !== "prompt" && <Chip className="text-gold/80">{t.kind}</Chip>}
                           {t.turns.length > 1 && <Chip>{t.turns.length} turns</Chip>}
                         </span>

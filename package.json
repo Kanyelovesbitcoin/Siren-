@@ -29,6 +29,7 @@
     "try": "node bin/siren.js --demo",
     "demo:target": "node examples/vulnerable-bot.js",
     "typecheck": "tsc --noEmit",
+    "test": "node bin/test-grading.js",
     "validate:playbooks": "node bin/validate-playbooks.js",
     "prepack": "next build",
     "demo:hardened": "node examples/vulnerable-bot.js --hardened"
