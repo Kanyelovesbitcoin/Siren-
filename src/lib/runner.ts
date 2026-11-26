@@ -2,7 +2,7 @@
 // and emits AuditEvents as it goes (streamed to the dashboard as NDJSON).
 
 import { checkTargetUrl } from "./safety";
-import { extractReply, renderBody, templateUsesHistory, type ChatMessage } from "./template";
+import { bodyError, extractReply, renderBody, templateUsesHistory, type ChatMessage } from "./template";
 import { deterministicChecks, heuristicEvaluate, judgeEvaluate, type Evaluation } from "./judge";
 import { buildFixPrompt } from "./remediation";
 import { runAttackCampaign, syntheticTest } from "./attacker";
@@ -33,8 +33,31 @@ export interface TargetCall {
   raw: string;
   text: string;
   resolved: boolean;
+  /** Set when the configured response path wasn't found and a common key was used instead. */
+  detectedPath?: string;
   latencyMs: number;
   error?: string;
+}
+
+const is2xx = (status: number | null) => status !== null && status >= 200 && status < 300;
+
+/**
+ * Did the app fail to answer at all? Returns a plain-English reason when the call errored,
+ * came back with a non-2xx status, or returned a JSON error body such as
+ * {"error": "Failed to get AI response"}. A failed call is never graded Pass or Warn.
+ */
+export function targetFailure(call: TargetCall): string | null {
+  if (call.error) return call.error;
+  if (call.status === null) return "Your app didn't respond.";
+  const apiError = bodyError(call.raw);
+  if (call.status === 429) {
+    return "Your app rate-limited this request (HTTP 429), so the test couldn't run. Re-run it on its own.";
+  }
+  if (!is2xx(call.status)) {
+    return `Your app returned an error (HTTP ${call.status})${apiError ? `: ${apiError}` : ""}, so this test couldn't be graded.`;
+  }
+  if (apiError) return `Your app replied with an error instead of an answer: ${apiError}`;
+  return null;
 }
 
 export async function callTarget(
@@ -85,8 +108,8 @@ export async function callTarget(
         error: `Target responded with a redirect (${res.status}). Siren does not follow redirects for safety.`,
       };
     }
-    const { text, resolved } = extractReply(raw, target.responsePath);
-    return { status: res.status, raw, text, resolved, latencyMs };
+    const { text, resolved, detectedPath } = extractReply(raw, target.responsePath);
+    return { status: res.status, raw, text, resolved, detectedPath, latencyMs };
   } catch (e) {
     const latencyMs = Math.round(performance.now() - started);
     const err = e as Error & { cause?: { code?: string } };
@@ -133,11 +156,20 @@ async function runPromptTest(
     if (signal.aborted) break;
     const prompt = test.turns[i];
     const call = await callTarget(target, prompt, history, signal);
-    if (call.status !== null && !call.resolved && target.responsePath.trim()) {
-      warnOnce("path", `Response path "${target.responsePath}" didn't match the target's JSON — showing the raw body instead.`);
-    }
-    if (call.status === 429 && !call.error) {
-      call.error = "Your app rate-limited this request (HTTP 429), so the test couldn't run. Re-run it on its own.";
+    // An API error (non-2xx, or a JSON {"error": ...} body) is not a reply. Record it and stop.
+    const failure = targetFailure(call);
+    if (failure && !call.error) call.error = failure;
+    if (!failure) {
+      if (call.detectedPath) {
+        warnOnce(
+          "autopath",
+          target.responsePath.trim()
+            ? `Response path "${target.responsePath}" wasn't in your app's reply, so Siren is reading the reply from "${call.detectedPath}" instead. Update the response path in your setup to make this permanent.`
+            : `Siren is reading your app's reply from "${call.detectedPath}".`,
+        );
+      } else if (!call.resolved && target.responsePath.trim()) {
+        warnOnce("path", `Response path "${target.responsePath}" didn't match the target's JSON — showing the raw body instead.`);
+      }
     }
     const turn = toTurn(i, prompt, call);
     turns.push(turn);
@@ -165,10 +197,14 @@ async function runBurstTest(test: PlaybookTest, target: TargetConfig, signal: Ab
   await Promise.all(Array.from({ length: concurrency }, worker));
   const wallMs = Math.round(performance.now() - started);
 
-  const ok = calls.filter((c) => c.status !== null && c.status >= 200 && c.status < 300).length;
+  // A 2xx carrying {"error": ...} is a failed request, not a success.
+  const errorReplies = calls.filter((c) => is2xx(c.status) && bodyError(c.raw) !== null).length;
+  const ok = calls.filter((c) => is2xx(c.status)).length - errorReplies;
   const limited = calls.filter((c) => c.status === 429).length;
   const serverErr = calls.filter((c) => c.status !== null && c.status >= 500).length;
   const netErr = calls.filter((c) => c.status === null).length;
+  // 401, 403, 404…: turned away for a reason that has nothing to do with load.
+  const rejected = calls.filter((c) => c.status !== null && c.status >= 400 && c.status < 500 && c.status !== 429).length;
   const latencies = calls.map((c) => c.latencyMs).sort((a, b) => a - b);
   const p95 = latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.95))] ?? 0;
 
@@ -181,10 +217,19 @@ async function runBurstTest(test: PlaybookTest, target: TargetConfig, signal: Ab
     "network errors": netErr,
     "p95 latency (ms)": p95,
     "wall time (ms)": wallMs,
+    ...(rejected ? { "other 4xx": rejected } : {}),
+    ...(errorReplies ? { "error replies": errorReplies } : {}),
   };
 
-  let evaluation: Evaluation;
-  if (serverErr + netErr > 0) {
+  let evaluation: Evaluation | null;
+  let unmeasurable: string | undefined;
+  if (ok === 0 && limited === 0) {
+    // Not one request got a real answer and none was throttled: the app is failing for another
+    // reason, so this says nothing about rate limiting. Error, not a grade.
+    const sampleFailure = calls.map(targetFailure).find(Boolean);
+    unmeasurable = `None of the ${calls.length} requests got an answer, so rate limiting couldn't be measured. ${sampleFailure ?? ""}`.trim();
+    evaluation = null;
+  } else if (serverErr + netErr > 0) {
     evaluation = {
       verdict: "fail",
       decidedBy: "rule",
@@ -216,6 +261,7 @@ async function runBurstTest(test: PlaybookTest, target: TargetConfig, signal: Ab
       `p95 latency: ${p95} ms · wall time: ${wallMs} ms\n\nSample response:\n${(sample?.text || sample?.error || "").slice(0, 600)}`,
     status: sample?.status ?? null,
     latencyMs: wallMs,
+    error: unmeasurable,
   };
   return { turns: [turn], evaluation, stats };
 }
@@ -229,22 +275,31 @@ async function runOversizeTest(test: PlaybookTest, target: TargetConfig, signal:
   const slowMs = cfg.slowMs ?? 15_000;
   const stats = { "input chars": prompt.length, "approx tokens": Math.round(prompt.length / 4), "latency (ms)": call.latencyMs };
 
-  let evaluation: Evaluation;
+  let evaluation: Evaluation | null;
+  let unmeasurable: string | undefined;
   const graceful = /too (long|large)|exceed|maximum|limit|shorten|max(imum)? length/i.test(call.text);
-  if (call.status === null || (call.status >= 500 && !graceful)) {
+  const apiError = bodyError(call.raw);
+  if (call.status === 429) {
+    // Throttled before the size limit could be observed: nothing to grade.
+    unmeasurable = "Your app rate-limited this request (HTTP 429) before the size limit could be observed. Re-run this test on its own.";
+    evaluation = null;
+  } else if (call.status === null && /connection refused/i.test(call.error ?? "")) {
+    unmeasurable = call.error;
+    evaluation = null;
+  } else if (call.status !== null && !graceful && [401, 403, 404, 405].includes(call.status)) {
+    // Turned away for a reason unrelated to size (not signed in, wrong address).
+    unmeasurable = targetFailure(call) ?? undefined;
+    evaluation = null;
+  } else if (is2xx(call.status) && apiError && !graceful) {
+    unmeasurable = `Your app replied with an error instead of an answer: ${apiError}`;
+    evaluation = null;
+  } else if (call.status === null || (call.status >= 500 && !graceful)) {
     evaluation = {
       verdict: "fail",
       decidedBy: "rule",
       reason: call.error
         ? `Oversized input (${prompt.length.toLocaleString()} chars) caused: ${call.error}`
         : `Oversized input caused an HTTP ${call.status} server error instead of a clean rejection.`,
-      weakness: test.remediation.summary,
-    };
-  } else if (call.status === 429) {
-    evaluation = {
-      verdict: "warn",
-      decidedBy: "rule",
-      reason: "The request was rate-limited (HTTP 429) before the size limit could be observed. Re-run this test on its own.",
       weakness: test.remediation.summary,
     };
   } else if ([400, 413, 422].includes(call.status) || graceful) {
@@ -262,6 +317,7 @@ async function runOversizeTest(test: PlaybookTest, target: TargetConfig, signal:
     };
   }
   const turn = toTurn(0, prompt, call, `${test.turns[0]}\n\n[+ ${filler.trim()} × ${reps.toLocaleString()} → ${prompt.length.toLocaleString()} chars]`);
+  if (unmeasurable) turn.error = unmeasurable;
   return { turns: [turn], evaluation, stats };
 }
 
@@ -295,6 +351,11 @@ export async function runAudit(opts: {
   const wanted = new Set(opts.testIds);
   const queue: { pb: Playbook; test: PlaybookTest }[] = [];
   for (const pb of playbooks) for (const test of pb.tests) if (wanted.has(test.id)) queue.push({ pb, test });
+  // Stress tests go last (oversized input, then the request burst at the very end), so tripping
+  // the app's rate limit can't make later tests come back as HTTP 429. The sort is stable, so
+  // everything else keeps its playbook order.
+  const stressRank = (t: PlaybookTest) => (t.kind === "burst" ? 2 : t.kind === "oversize" ? 1 : 0);
+  queue.sort((a, b) => stressRank(a.test) - stressRank(b.test));
 
   const useJudge = judge.mode === "judge" && !!judge.model?.trim();
   if (!useJudge) {
@@ -329,8 +390,16 @@ export async function runAudit(opts: {
       } else {
         const run = await runPromptTest(test, target, emit, signal, warnOnce);
         turns = run.turns;
-        const hardError = turns.length === 0 || turns.every((t) => t.error);
-        if (!hardError) {
+        // If any request failed, the test didn't complete and must not be graded Pass or Warn.
+        // The one exception: a leak caught in the turns that did succeed is still a real Fail.
+        const errored = turns.length === 0 || turns.some((t) => t.error);
+        if (errored) {
+          const completed = turns.map((t, idx) => ({ t, raw: run.raws[idx] ?? "" })).filter((x) => !x.t.error);
+          const caught = completed.length
+            ? deterministicChecks(test, target, completed.map((x) => x.t), completed.map((x) => x.raw))
+            : null;
+          evaluation = caught?.verdict === "fail" ? caught : null;
+        } else {
           evaluation = deterministicChecks(test, target, turns, run.raws);
           if (!evaluation && useJudge) {
             try {
@@ -443,7 +512,8 @@ async function runAttackerMode(opts: {
       signal,
       fire: async (prompt, history) => {
         const call = await callTarget(target, prompt, history, signal);
-        return { text: call.text, status: call.status, latencyMs: call.latencyMs, error: call.error };
+        // Same rule as standard mode: an API error is a failed request, not a reply to grade.
+        return { text: call.text, status: call.status, latencyMs: call.latencyMs, error: targetFailure(call) ?? undefined };
       },
       onTurn: (turn) => emit({ type: "turn", testId, turn }),
     });

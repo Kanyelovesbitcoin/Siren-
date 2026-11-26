@@ -75,8 +75,53 @@ export function extractPath(obj: unknown, path: string): unknown {
   return cur;
 }
 
-/** Turn a raw HTTP body into the reply text using the configured path. */
-export function extractReply(rawBody: string, path: string): { text: string; resolved: boolean } {
+/**
+ * Where apps commonly put the reply text. Tried in this order when the configured response
+ * path isn't in the JSON, so a wrong or missing path doesn't mean grading raw JSON.
+ */
+export const COMMON_REPLY_PATHS = [
+  "reply",
+  "message",
+  "answer",
+  "text",
+  "content",
+  "response",
+  "output",
+  "data.reply",
+  "data.message",
+  "data.answer",
+  "message.content",
+  "choices[0].message.content",
+];
+
+/**
+ * If a JSON body carries a top-level `error` (e.g. {"error": "Failed to get AI response"}),
+ * return it as text. That body is an API failure, not a reply to grade. `"error": null` or
+ * `false` on a successful response is ignored.
+ */
+export function bodyError(rawBody: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const err = (parsed as Record<string, unknown>).error;
+  if (err === undefined || err === null || err === false || err === "") return null;
+  if (typeof err === "string") return err.slice(0, 300);
+  if (typeof err === "object") {
+    const message = (err as Record<string, unknown>).message;
+    if (typeof message === "string" && message.trim()) return message.slice(0, 300);
+  }
+  return JSON.stringify(err).slice(0, 300);
+}
+
+/**
+ * Turn a raw HTTP body into the reply text using the configured path. When that path isn't
+ * found, look under the common keys and report which one worked as `detectedPath`.
+ */
+export function extractReply(rawBody: string, path: string): { text: string; resolved: boolean; detectedPath?: string } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawBody);
@@ -84,7 +129,22 @@ export function extractReply(rawBody: string, path: string): { text: string; res
     // Plain-text or streamed responses: use the body as-is.
     return { text: rawBody, resolved: !path.trim() };
   }
-  const value = extractPath(parsed, path);
-  if (value === undefined) return { text: rawBody, resolved: false };
-  return { text: typeof value === "string" ? value : JSON.stringify(value, null, 2), resolved: true };
+  const configured = path.trim();
+  const value = configured ? extractPath(parsed, configured) : undefined;
+  if (value !== undefined) {
+    return { text: typeof value === "string" ? value : JSON.stringify(value, null, 2), resolved: true };
+  }
+  if (typeof parsed === "string") return { text: parsed, resolved: !configured };
+
+  // An error body has no reply in it; don't mistake its "message" for one.
+  if (bodyError(rawBody) === null) {
+    for (const candidate of COMMON_REPLY_PATHS) {
+      if (candidate === configured) continue;
+      const found = extractPath(parsed, candidate);
+      if (typeof found === "string" && found.trim()) return { text: found, resolved: true, detectedPath: candidate };
+    }
+  }
+  // No path configured and nothing recognisable: the whole body is the reply.
+  if (!configured) return { text: JSON.stringify(parsed, null, 2), resolved: true };
+  return { text: rawBody, resolved: false };
 }

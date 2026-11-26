@@ -95,6 +95,8 @@ interface Connection {
   label: string;
   reply?: string;
   error?: string;
+  /** Siren found the reply under this key and saved it as the response path. */
+  fixedPath?: string;
 }
 
 interface Ping {
@@ -102,6 +104,7 @@ interface Ping {
   status?: number | null;
   reply?: string;
   error?: string;
+  detectedPath?: string;
 }
 
 /** One friendly message to the app, through the same route as "Send test message". */
@@ -435,9 +438,12 @@ export default function Dashboard() {
     const label = targetLabel(t.url);
     setConn({ status: "checking", label });
     const ping = await pingTarget(t);
+    // The reply wasn't where the setup said, but Siren found it under a common key: save that.
+    const fixedPath = ping.ok ? ping.detectedPath : undefined;
+    if (fixedPath) setTarget((cur) => (cur.url === t.url ? { ...cur, responsePath: fixedPath } : cur));
     setConn(
       ping.ok
-        ? { status: "ok", label, reply: ping.reply }
+        ? { status: "ok", label, reply: ping.reply, fixedPath }
         : { status: "fail", label, error: ping.error ?? (ping.status ? `Your app answered with an error (HTTP ${ping.status}).` : "No reply came back.") },
     );
   }
@@ -611,6 +617,12 @@ export default function Dashboard() {
                       Siren said hello and your app replied:{" "}
                       <span className="text-ink">&ldquo;{(conn.reply || "(empty reply)").slice(0, 220)}{(conn.reply ?? "").length > 220 ? "…" : ""}&rdquo;</span>
                     </p>
+                    {conn.fixedPath && (
+                      <p className="mt-1 text-ink-dim">
+                        Siren found the reply under <span className="font-mono text-[12px] text-ink">{conn.fixedPath}</span> and saved
+                        that to your setup.
+                      </p>
+                    )}
                     <p className="mt-1 text-muted">If that looks like your chatbot talking, you&apos;re ready.</p>
                   </>
                 )}

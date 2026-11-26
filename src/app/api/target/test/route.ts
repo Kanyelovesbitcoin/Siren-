@@ -1,4 +1,4 @@
-import { callTarget } from "@/lib/runner";
+import { callTarget, targetFailure } from "@/lib/runner";
 import { checkTargetUrl } from "@/lib/safety";
 import { validateTemplate } from "@/lib/template";
 import { json, rejectUntrusted } from "@/lib/http";
@@ -19,13 +19,17 @@ export async function POST(request: Request) {
   if (templateError) return json({ ok: false, error: templateError }, 400);
 
   const call = await callTarget(target, prompt?.trim() || "Hello! In one sentence, what can you help me with?", []);
+  // Same test the audit uses: a non-2xx status or a JSON {"error": ...} body is a failure.
+  const failure = targetFailure(call);
   return json({
-    ok: !call.error && call.status !== null && call.status < 400,
+    ok: !failure,
     status: call.status,
     latencyMs: call.latencyMs,
     reply: call.text,
     resolved: call.resolved,
+    // The configured response path wasn't found, but the reply was under this common key.
+    detectedPath: call.detectedPath,
     raw: call.raw.slice(0, 4000),
-    error: call.error,
+    error: failure ?? undefined,
   });
 }

@@ -306,8 +306,9 @@ export async function runAttackCampaign(opts: {
       onTurn(turn);
       return {
         turns,
-        verdict: turns.length > 1 ? "warn" : "error",
-        reason: `Couldn't reach the target during the attack: ${call.error}`,
+        // The campaign couldn't finish, so there is nothing trustworthy to grade.
+        verdict: "error",
+        reason: `The attack couldn't finish because a request to your app failed: ${call.error}`,
         decidedBy: "error",
         stats: statsFor(),
       };

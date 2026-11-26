@@ -33,6 +33,8 @@ interface TestResponse {
   latencyMs?: number;
   reply?: string;
   resolved?: boolean;
+  /** The configured response path wasn't found; the reply was under this common key instead. */
+  detectedPath?: string;
   raw?: string;
   error?: string;
 }
@@ -264,7 +266,10 @@ export default function TargetPanel({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ target: value }),
       });
-      setTestRes((await res.json()) as TestResponse);
+      const data = (await res.json()) as TestResponse;
+      setTestRes(data);
+      // Save the key Siren found, so the audit reads replies from the right place.
+      if (data.ok && data.detectedPath) onChange({ ...value, responsePath: data.detectedPath });
     } catch (e) {
       setTestRes({ ok: false, error: (e as Error).message });
     } finally {
@@ -341,7 +346,9 @@ export default function TargetPanel({
               <>
                 <div className="mb-1.5 flex items-center gap-2">
                   <span className="text-[11px] font-medium tracking-wide text-muted uppercase">Extracted reply</span>
-                  {testRes.resolved ? (
+                  {testRes.detectedPath ? (
+                    <Chip className="border-pass/30 text-pass">found under &quot;{testRes.detectedPath}&quot; · saved</Chip>
+                  ) : testRes.resolved ? (
                     <Chip className="border-pass/30 text-pass">path ok</Chip>
                   ) : (
                     <Chip className="border-warn/30 text-warn">path not found · showing raw</Chip>

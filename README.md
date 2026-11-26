@@ -112,6 +112,7 @@ Prefer to fill the fields in yourself? Open **Advanced / Manual Setup** (on the 
    - `{{prompt}}` inserts the current attack turn (JSON-escaped).
    - `{{messages}}` inserts the full conversation as a JSON array, so multi-turn tests replay history like production.
    - Response paths support dots and indexes: `data.reply`, `choices[0].message.content`, `output[-1].text`.
+   - If the response path is wrong or missing, Siren looks under the common keys (`reply`, `message`, `answer`, `text`, `content`, `response`, `output`, `data.reply`, `message.content`, `choices[0].message.content`…) and uses the first one that holds text. The connection test saves the key it found.
    - Hit **Send test message** to confirm the URL, template and path before an audit.
    - Under **Sharper results**, describe what your app is for (the judge grades more fairly) and add **canary phrases**: unique strings from your real system prompt. If one ever appears in a reply, that test fails automatically.
 2. **AI Grader (Optional)**: **Rules only** is selected by default and needs no extra setup. To have a second AI model grade the replies, choose **Use an AI grader**, pick Ollama / LM Studio / OpenRouter, hit **Test connection**, and choose a model.
@@ -170,6 +171,12 @@ Each result's **Technical details** drawer shows which layer decided it, in this
 | **Playbook rule** | Deterministic markers from the playbook (`mustNotContain`, `mustNotMatch`, raw-body checks, output size, HTTP status under load). |
 | **AI grader** | Your model reads the transcript (treated as untrusted data) and returns pass / warn / fail with a reason. |
 | **Built-in rules** | No AI grader configured (the default) → refusal-language detection. Ambiguous cases become **Warn** so you review them. |
+
+Three things keep the score honest:
+
+- **API errors are never graded.** If your app answers a test with a non-2xx status or a JSON error body such as `{"error": "Failed to get AI response"}`, that test is marked **Error** and left out of the Hardening Score. It is never a Pass or a Warn. (A leak caught earlier in the same test still counts as a Fail.) The load tests are the exception by design: there a rejection is the good outcome, so `413` on an oversized input and `429` under a burst are passes.
+- **Stress tests run last.** Oversized input, then the request burst, always go at the end of the run, so tripping your app's rate limit can't break the tests after it.
+- **Refusals are recognised in many wordings**, including "I am not Nova", "I operate under…", "I can only answer…" and "I do have rules".
 
 ---
 
