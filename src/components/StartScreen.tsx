@@ -57,6 +57,7 @@ export default function StartScreen({
   manualReady,
   hasResults,
   onBackToResults,
+  onSeeSample,
 }: {
   demoStatus: DemoStatus;
   /** Launched with `npm run try`, so the demo bot is known to be running. */
@@ -71,6 +72,7 @@ export default function StartScreen({
   manualReady: boolean;
   hasResults: boolean;
   onBackToResults: () => void;
+  onSeeSample: () => void;
 }) {
   return (
     <main className="mx-auto max-w-[1040px] px-4 py-10 sm:px-6 sm:py-14">
@@ -164,11 +166,16 @@ export default function StartScreen({
           <Lock className="size-3.5 shrink-0" />
           Siren only tests apps running on your own computer. It can&apos;t be pointed at anyone else&apos;s website.
         </p>
-        {hasResults && (
-          <button className="text-xs text-gold/90 underline-offset-4 hover:underline" onClick={onBackToResults}>
-            Back to my results
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+          <button className="text-xs text-gold/90 underline-offset-4 hover:underline" onClick={onSeeSample}>
+            See a sample report first
           </button>
-        )}
+          {hasResults && (
+            <button className="text-xs text-gold/90 underline-offset-4 hover:underline" onClick={onBackToResults}>
+              Back to my results
+            </button>
+          )}
+        </div>
       </div>
     </main>
   );

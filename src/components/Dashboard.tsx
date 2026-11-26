@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CircleCheck, Download, Eraser, House, LoaderCircle, Lock, Play, Radio, RefreshCw, ShieldCheck, TriangleAlert, Info, X } from "lucide-react";
+import SampleReport from "./SampleReport";
+import ScoreTiles from "./ScoreTiles";
 import StartScreen, { type DemoStatus } from "./StartScreen";
 import TargetPanel from "./TargetPanel";
 import ProviderPanel from "./ProviderPanel";
@@ -10,12 +12,17 @@ import AttackerBar from "./AttackerBar";
 import ResultCard, { type LiveTest } from "./ResultCard";
 import { Button, Card, cx } from "./ui";
 import { checkTargetUrl } from "@/lib/safety";
+import { summarize } from "@/lib/summary";
 import { sameTarget, targetLabel } from "@/lib/target-config";
 import { validateTemplate } from "@/lib/template";
 import { PROVIDER_PRESETS } from "@/lib/providers";
 import type { AttackConfig, AuditEvent, Playbook, PlaybookLoadError, ProviderConfig, TargetConfig, TestResult } from "@/lib/types";
 
 const STORAGE_KEY = "siren.config.v1";
+/** Set once someone on a small screen chooses "use the full app anyway", so the sample isn't forced on them again. */
+const SKIP_SAMPLE_KEY = "siren.skipSample.v1";
+/** Below this width Siren shows the sample report first: a phone can't reach an app to test. */
+const PHONE_QUERY = "(max-width: 639px)";
 
 const DEFAULT_TARGET: TargetConfig = {
   url: "http://localhost:3000/api/chat",
@@ -164,6 +171,8 @@ export default function Dashboard() {
   const [demoReady, setDemoReady] = useState(false);
   const [demoPort, setDemoPort] = useState(DEMO_PORT);
   const [conn, setConn] = useState<Connection | null>(null);
+  /** The read-only sample report. Shown first on phone-sized screens, and on request from the start screen. */
+  const [sample, setSample] = useState<"phone" | "requested" | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const playbooksRef = useRef<Playbook[]>([]);
   const rerunRef = useRef(false);
@@ -200,8 +209,30 @@ export default function Dashboard() {
       setView("start");
       window.history.replaceState(null, "", window.location.pathname);
     }
+
+    // Phone-sized screen: lead with the sample report. Checked once on load, so resizing a
+    // desktop window mid-audit never pulls anyone away from their results.
+    let skipSample = false;
+    try {
+      skipSample = localStorage.getItem(SKIP_SAMPLE_KEY) === "1";
+    } catch {
+      /* storage unavailable */
+    }
+    if (!skipSample && window.matchMedia(PHONE_QUERY).matches) setSample("phone");
     setHydrated(true);
   }, []);
+
+  function leaveSample() {
+    if (sample === "phone") {
+      try {
+        localStorage.setItem(SKIP_SAMPLE_KEY, "1");
+      } catch {
+        /* storage unavailable */
+      }
+    }
+    setSample(null);
+    window.scrollTo(0, 0);
+  }
 
   useEffect(() => {
     if (!hydrated) return;
@@ -230,7 +261,8 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
+    // The sample report is self-contained: no requests until someone moves on to the real app.
+    if (!hydrated || sample) return;
     refreshPlaybooks().then((pbs) => {
       const ids = new Set(pbs.flatMap((p) => p.tests.map((t) => t.id)));
       setSelected((prev) => {
@@ -239,7 +271,7 @@ export default function Dashboard() {
         return kept.size ? kept : ids;
       });
     });
-  }, [hydrated, refreshPlaybooks]);
+  }, [hydrated, sample, refreshPlaybooks]);
 
   const targetCheck = useMemo(() => checkTargetUrl(target.url), [target.url]);
   const templateError = useMemo(() => validateTemplate(target.bodyTemplate), [target.bodyTemplate]);
@@ -258,18 +290,13 @@ export default function Dashboard() {
             : undefined;
 
   const results = live.map((l) => l.result).filter((r): r is TestResult => !!r);
-  const counts = useMemo(() => {
-    const c = { pass: 0, warn: 0, fail: 0, error: 0 };
-    results.forEach((r) => c[r.verdict]++);
-    return c;
-  }, [results]);
+  // Counts and score live in lib/summary.ts (same formula as before) so the sample report shares them.
+  const { counts, score } = summarize(results);
   const failedIds = live.filter((l) => l.result && (l.result.verdict === "fail" || l.result.verdict === "warn" || l.result.verdict === "error")).map((l) => l.testId);
   const compared = live.filter((l) => l.result && l.previousVerdict);
   const rank = { pass: 3, warn: 2, fail: 1, error: 0 } as const;
   const fixedCount = compared.filter((l) => rank[l.result!.verdict] > rank[l.previousVerdict!]).length;
   const stillCount = compared.filter((l) => l.result!.verdict !== "pass" && rank[l.result!.verdict] <= rank[l.previousVerdict!]).length;
-  const graded = counts.pass + counts.warn + counts.fail;
-  const score = graded ? Math.round((100 * (counts.pass + counts.warn * 0.5)) / graded) : null;
 
   function handleEvent(e: AuditEvent) {
     switch (e.type) {
@@ -491,7 +518,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2 text-[11px]">
-            {hydrated && view === "workspace" && (
+            {hydrated && !sample && view === "workspace" && (
               <Button variant="ghost" className="px-2 py-1 text-xs" icon={<House className="size-3.5" />} onClick={() => setView("start")} disabled={running}>
                 Start screen
               </Button>
@@ -505,15 +532,21 @@ export default function Dashboard() {
               <Lock className="size-3" />
               {targetCheck.external ? "External target blocked" : "Localhost only"}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-line-strong px-2.5 py-1 text-ink-dim">
-              <span className={cx("size-1.5 rounded-full", judge.mode === "judge" && judge.model ? "bg-pass" : "bg-muted")} />
-              {judge.mode === "judge" && judge.model ? judge.model : "Rules-only grading"}
-            </span>
+            {sample ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-gold/35 px-2.5 py-1 whitespace-nowrap text-gold">Sample report</span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-line-strong px-2.5 py-1 text-ink-dim">
+                <span className={cx("size-1.5 rounded-full", judge.mode === "judge" && judge.model ? "bg-pass" : "bg-muted")} />
+                {judge.mode === "judge" && judge.model ? judge.model : "Rules-only grading"}
+              </span>
+            )}
           </div>
         </div>
       </header>
 
-      {hydrated && view === "start" && (
+      {hydrated && sample && <SampleReport onPhone={sample === "phone"} onLeave={leaveSample} />}
+
+      {hydrated && !sample && view === "start" && (
         <StartScreen
           demoStatus={demoStatus}
           demoReady={demoReady}
@@ -528,10 +561,14 @@ export default function Dashboard() {
           manualReady={targetCheck.ok && !templateError}
           hasResults={live.length > 0}
           onBackToResults={() => setView("workspace")}
+          onSeeSample={() => {
+            setSample("requested");
+            window.scrollTo(0, 0);
+          }}
         />
       )}
 
-      {hydrated && view === "workspace" && (
+      {hydrated && !sample && view === "workspace" && (
       <main className="mx-auto grid max-w-[1440px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[400px_minmax(0,1fr)]">
         <aside className="space-y-6 lg:sticky lg:top-[76px] lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto lg:pr-1 scroll-quiet">
           <TargetPanel
@@ -661,19 +698,8 @@ export default function Dashboard() {
             }
           >
             {(results.length > 0 || running) && (
-              <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
-                {[
-                  { label: "Hardening score", value: score === null ? "—" : `${score}`, cls: "text-gold" },
-                  { label: "Pass", value: counts.pass, cls: "text-pass" },
-                  { label: "Warn", value: counts.warn, cls: "text-warn" },
-                  { label: "Fail", value: counts.fail, cls: "text-fail" },
-                  { label: "Error", value: counts.error, cls: "text-err" },
-                ].map((s) => (
-                  <div key={s.label} className="rounded-xl border border-line bg-obsidian/60 px-4 py-3">
-                    <p className="text-[11px] tracking-wide text-muted uppercase">{s.label}</p>
-                    <p className={cx("mt-0.5 font-mono text-2xl font-semibold tabular-nums", s.cls)}>{s.value}</p>
-                  </div>
-                ))}
+              <div className="mb-5">
+                <ScoreTiles counts={counts} score={score} />
               </div>
             )}
 

@@ -236,14 +236,18 @@ export default function ResultCard({
   live,
   running,
   onRerun,
+  defaultOpen = true,
 }: {
   live: LiveTest;
   running: boolean;
+  /** Leave out for a read-only card (the sample report): the re-attack buttons disappear. */
   onRerun?: () => void;
+  /** Start collapsed, e.g. in the sample report where only the first problem is opened. */
+  defaultOpen?: boolean;
 }) {
   const r = live.result;
   const needsFix = r && (r.verdict === "fail" || r.verdict === "warn");
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(defaultOpen);
   const [showPrompt, setShowPrompt] = useState(false);
   const isCampaign = live.turns.some((t) => t.tactic);
 

@@ -100,6 +100,10 @@ The setup block looks like this, in case you want to write one by hand:
 }
 ```
 
+### On a phone
+
+Siren tests apps running on your computer, so a phone can't scan anything. On screens narrower than 640px Siren shows a **sample report** first: a real audit of the demo bot with the score, the findings, and working **Copy Fix Prompt** buttons, plus a banner asking visitors to open Siren on their computer. It's read-only and makes no network requests. "Use the full app on this screen anyway" skips it. On a computer, the start screen has a **See a sample report first** link to the same page.
+
 ### Advanced / Manual Setup
 
 Prefer to fill the fields in yourself? Open **Advanced / Manual Setup** (on the start screen, or in the **App to test** panel).
@@ -278,8 +282,10 @@ src/
     runner.ts              Sequential audit engine (prompt, burst, oversize) + attacker mode
     attacker.ts            Adaptive red-team engine (plan → fire → assess loop)
     tactics.ts             The 12 tactic families attacker mode rotates through
+    summary.ts             Pass / warn / fail counts and the hardening score
   data/
     attacker-models.json   Recommended attacker models (edit freely)
+    sample-report.json     Saved demo-bot audit shown as the sample report
     judge.ts               Canary → rules → judge → heuristic evaluation
     remediation.ts         Copy Fix Prompt builder
 ```
