@@ -53,6 +53,8 @@ export default function StartScreen({
   target,
   onTargetChange,
   onApplyConfig,
+  autoRun,
+  onAutoRunChange,
   onManualContinue,
   manualReady,
   hasResults,
@@ -67,6 +69,9 @@ export default function StartScreen({
   onTargetChange: (next: TargetConfig) => void;
   /** A setup arrived from the Copy Setup Prompt flow. */
   onApplyConfig: (next: TargetConfig) => void;
+  /** Start the audit as soon as the app connects. */
+  autoRun: boolean;
+  onAutoRunChange: (next: boolean) => void;
   /** "Continue" inside Advanced / Manual Setup. */
   onManualContinue: () => void;
   manualReady: boolean;
@@ -150,7 +155,7 @@ export default function StartScreen({
           <p className="mb-5 text-[14px] leading-relaxed text-ink-dim">
             Test the AI chat feature you&apos;re building. Make sure your app is running on this computer first.
           </p>
-          <ConnectHelper current={target} onApply={onApplyConfig} />
+          <ConnectHelper current={target} onApply={onApplyConfig} autoRun={autoRun} onAutoRunChange={onAutoRunChange} />
           <div className="mt-5">
             <ManualSetupDetails value={target} onChange={onTargetChange}>
               <Button icon={<ArrowRight className="size-4" />} onClick={onManualContinue} disabled={!manualReady}>

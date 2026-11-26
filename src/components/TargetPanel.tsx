@@ -252,6 +252,8 @@ export default function TargetPanel({
   value,
   onChange,
   onApplyConfig,
+  autoRun,
+  onAutoRunChange,
   isDemo,
   disabled,
 }: {
@@ -259,6 +261,9 @@ export default function TargetPanel({
   onChange: (next: TargetConfig) => void;
   /** A setup arrived from the Copy Setup Prompt flow (pasted, or picked up from the saved file). */
   onApplyConfig: (next: TargetConfig) => void;
+  /** Start the audit as soon as the app connects. */
+  autoRun: boolean;
+  onAutoRunChange: (next: boolean) => void;
   /** True while the bundled demo bot is the app under test. */
   isDemo?: boolean;
   disabled?: boolean;
@@ -388,7 +393,7 @@ export default function TargetPanel({
             {isDemo ? "Connect my own app" : "Connect with Claude Code / Cursor"}
           </summary>
           <div className="px-3 pb-3">
-            <ConnectHelper current={value} onApply={onApplyConfig} disabled={disabled} />
+            <ConnectHelper current={value} onApply={onApplyConfig} autoRun={autoRun} onAutoRunChange={onAutoRunChange} disabled={disabled} />
           </div>
         </details>
 

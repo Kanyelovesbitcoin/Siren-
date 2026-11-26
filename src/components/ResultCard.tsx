@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ArrowRight, ChevronDown, ChevronRight, Crosshair, RefreshCw, RotateCcw, Sparkles, TriangleAlert } from "lucide-react";
 import { Chip, CopyButton, SeverityChip, VerdictBadge, cx } from "./ui";
+import { buildTestErrorPrompt } from "@/lib/setup-prompt";
 import { tacticName } from "@/lib/tactics";
 import type { TestResult, TurnOutcome, TurnRecord, Verdict } from "@/lib/types";
 
@@ -238,6 +239,36 @@ function StepNumber({ n }: { n: number }) {
   );
 }
 
+/** The fix, as one bar: copy → paste → re-test. Stacks on narrow screens. */
+function FixSteps({ prompt, onRerun, running }: { prompt: string; onRerun?: () => void; running: boolean }) {
+  return (
+    <ol className="mt-4 flex flex-col overflow-hidden rounded-xl border border-line bg-obsidian/60 text-[12.5px] text-ink-dim sm:flex-row sm:items-stretch">
+      <li className="flex items-center gap-2.5 px-3 py-2.5">
+        <StepNumber n={1} />
+        <CopyButton text={prompt} label="Copy Fix Prompt" variant="gold" className="min-h-11 px-3 py-1.5 text-[13px] whitespace-nowrap sm:min-h-0" />
+      </li>
+      <li className="flex flex-1 items-center gap-2.5 border-t border-line px-3 py-2.5 sm:border-t-0 sm:border-l">
+        <ChevronRight aria-hidden className="-ml-1 hidden size-4 shrink-0 text-muted sm:block" />
+        <StepNumber n={2} />
+        <span>Paste it into Claude Code or Cursor</span>
+      </li>
+      {onRerun && (
+        <li className="flex items-center gap-2.5 border-t border-line px-3 py-2.5 sm:border-t-0 sm:border-l">
+          <ChevronRight aria-hidden className="-ml-1 hidden size-4 shrink-0 text-muted sm:block" />
+          <StepNumber n={3} />
+          <button
+            onClick={onRerun}
+            disabled={running}
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-gold/40 px-2.5 py-1.5 text-xs whitespace-nowrap text-gold transition hover:bg-gold/10 disabled:opacity-40 sm:min-h-0"
+          >
+            <RefreshCw className="size-3.5" /> Re-attack to verify
+          </button>
+        </li>
+      )}
+    </ol>
+  );
+}
+
 export default function ResultCard({
   live,
   running,
@@ -330,37 +361,13 @@ export default function ResultCard({
           {needsFix && r.fixPrompt && (
             <div className={cx("rounded-xl border p-4", r.verdict === "fail" ? "border-fail/30 bg-fail/[0.06]" : "border-warn/30 bg-warn/[0.06]")}>
               <div className="flex flex-wrap items-start gap-3">
-                <TriangleAlert className={cx("mt-0.5 size-4 shrink-0", r.verdict === "fail" ? "text-fail" : "text-warn")} />
+                <TriangleAlert aria-hidden className={cx("mt-0.5 size-4 shrink-0", r.verdict === "fail" ? "text-fail" : "text-warn")} />
                 <div className="min-w-0 flex-1">
                   <p className="text-[13px] font-semibold text-ink">What this means</p>
                   <p className="mt-1 text-[13px] leading-relaxed text-ink-dim">{r.weakness}</p>
                 </div>
               </div>
-              {/* The fix, as one bar: copy → paste → re-test. Stacks on narrow screens. */}
-              <ol className="mt-4 flex flex-col overflow-hidden rounded-xl border border-line bg-obsidian/60 text-[12.5px] text-ink-dim sm:flex-row sm:items-stretch">
-                <li className="flex items-center gap-2.5 px-3 py-2.5">
-                  <StepNumber n={1} />
-                  <CopyButton text={r.fixPrompt} label="Copy Fix Prompt" variant="gold" className="min-h-11 px-3 py-1.5 text-[13px] whitespace-nowrap sm:min-h-0" />
-                </li>
-                <li className="flex flex-1 items-center gap-2.5 border-t border-line px-3 py-2.5 sm:border-t-0 sm:border-l">
-                  <ChevronRight className="-ml-1 hidden size-4 shrink-0 text-muted sm:block" />
-                  <StepNumber n={2} />
-                  <span>Paste it into Claude Code or Cursor</span>
-                </li>
-                {onRerun && (
-                  <li className="flex items-center gap-2.5 border-t border-line px-3 py-2.5 sm:border-t-0 sm:border-l">
-                    <ChevronRight className="-ml-1 hidden size-4 shrink-0 text-muted sm:block" />
-                    <StepNumber n={3} />
-                    <button
-                      onClick={onRerun}
-                      disabled={running}
-                      className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-gold/40 px-2.5 py-1.5 text-xs whitespace-nowrap text-gold transition hover:bg-gold/10 disabled:opacity-40 sm:min-h-0"
-                    >
-                      <RefreshCw className="size-3.5" /> Re-attack to verify
-                    </button>
-                  </li>
-                )}
-              </ol>
+              <FixSteps prompt={r.fixPrompt} onRerun={onRerun} running={running} />
               <button
                 className="mt-1 flex min-h-9 items-center gap-1.5 text-xs text-ink-dim hover:text-gold"
                 aria-expanded={showPrompt}
@@ -374,6 +381,22 @@ export default function ResultCard({
                   {r.fixPrompt}
                 </pre>
               )}
+            </div>
+          )}
+
+          {r?.verdict === "error" && (
+            <div className="rounded-xl border border-err/30 bg-err/[0.06] p-4">
+              <div className="flex items-start gap-3">
+                <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-err" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-semibold text-ink">This test couldn&apos;t run</p>
+                  <p className="mt-1 text-[13px] leading-relaxed text-ink-dim">
+                    Your app sent back an error instead of a reply, so there was nothing to grade. It isn&apos;t counted in your score.
+                    Your coding agent can find out why.
+                  </p>
+                </div>
+              </div>
+              <FixSteps prompt={buildTestErrorPrompt(r)} onRerun={onRerun} running={running} />
             </div>
           )}
 

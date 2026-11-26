@@ -182,11 +182,13 @@ export function CopyButton({
   label = "Copy",
   variant = "outline",
   className,
+  onCopied,
 }: {
   text: string;
   label?: string;
   variant?: ButtonVariant;
   className?: string;
+  onCopied?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -198,6 +200,7 @@ export function CopyButton({
         onClick={async () => {
           if (await copyText(text)) {
             setCopied(true);
+            onCopied?.();
             setTimeout(() => setCopied(false), 1800);
           }
         }}

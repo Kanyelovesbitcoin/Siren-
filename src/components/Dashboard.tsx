@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CircleCheck, Download, Eraser, House, LoaderCircle, Lock, Play, Radio, RefreshCw, ShieldCheck, TriangleAlert, Info, X } from "lucide-react";
+import { buildConnectFixPrompt } from "@/lib/setup-prompt";
 import SampleReport from "./SampleReport";
 import ScoreTiles from "./ScoreTiles";
 import StartScreen, { type DemoStatus } from "./StartScreen";
@@ -11,7 +12,7 @@ import SuitePanel from "./SuitePanel";
 import AttackerBar from "./AttackerBar";
 import { type LiveTest } from "./ResultCard";
 import ResultGroups from "./ResultGroups";
-import { Button, Card, cx } from "./ui";
+import { Button, Card, CopyButton, cx } from "./ui";
 import { checkTargetUrl } from "@/lib/safety";
 import { summarize } from "@/lib/summary";
 import { sameTarget, targetLabel } from "@/lib/target-config";
@@ -110,7 +111,17 @@ async function pingTarget(target: TargetConfig): Promise<Ping> {
   }
 }
 
-function loadSaved(): { target: TargetConfig; judge: ProviderConfig; selected?: string[]; attack?: AttackConfig; view?: View } | null {
+/** After a failed connection Siren looks again this often, so the user never has to come back and press retry. */
+const RETRY_MS = 5000;
+
+function loadSaved(): {
+  target: TargetConfig;
+  judge: ProviderConfig;
+  selected?: string[];
+  attack?: AttackConfig;
+  view?: View;
+  autoRun?: boolean;
+} | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
@@ -164,6 +175,11 @@ export default function Dashboard() {
   const [demoReady, setDemoReady] = useState(false);
   const [demoPort, setDemoPort] = useState(DEMO_PORT);
   const [conn, setConn] = useState<Connection | null>(null);
+  /** Start the audit as soon as an app connects (the "paste one prompt and it's done" flow). */
+  const [autoRun, setAutoRun] = useState(true);
+  /** Where the coding agent is asked to save the setup; goes into the fix prompt. */
+  const [configPath, setConfigPath] = useState<string | null>(null);
+  const failedAt = useRef(0);
   /** The read-only sample report. Shown first on phone-sized screens, and on request from the start screen. */
   const [sample, setSample] = useState<"phone" | "requested" | null>(null);
   /** Spoken by screen readers through a polite live region: audit started, finished, stopped. */
@@ -200,6 +216,7 @@ export default function Dashboard() {
     }
     if (saved?.attack) setAttack({ ...DEFAULT_ATTACK, ...saved.attack });
     if (saved?.selected) setSelected(new Set(saved.selected));
+    if (typeof saved?.autoRun === "boolean") setAutoRun(saved.autoRun);
     // Settings saved before the start screen existed belong to someone who already knows the dashboard.
     if (saved) setView(saved.view === "start" ? "start" : "workspace");
 
@@ -246,11 +263,11 @@ export default function Dashboard() {
     try {
       const { apiKey: _drop, ...judgeSafe } = judge;
       void _drop;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ target, judge: judgeSafe, attack, selected: [...selected], view }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ target, judge: judgeSafe, attack, selected: [...selected], view, autoRun }));
     } catch {
       /* storage unavailable */
     }
-  }, [hydrated, target, judge, attack, selected, view]);
+  }, [hydrated, target, judge, attack, selected, view, autoRun]);
 
   const refreshPlaybooks = useCallback(async () => {
     try {
@@ -279,6 +296,43 @@ export default function Dashboard() {
       });
     });
   }, [hydrated, sample, refreshPlaybooks]);
+
+  useEffect(() => {
+    if (!hydrated || sample || configPath) return; // the sample report makes no requests
+    fetch("/api/config", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { path?: string } | null) => data?.path && setConfigPath(data.path))
+      .catch(() => {});
+  }, [hydrated, sample, configPath]);
+
+  // After a failed connection, keep looking. The user is off in their coding agent getting the
+  // app running; when it answers (or the agent saves a corrected setup), connect without a click.
+  const retryRef = useRef<() => Promise<void>>(async () => {});
+  retryRef.current = async () => {
+    const saved = (await fetch("/api/config", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .catch(() => null)) as { found?: boolean; target?: TargetConfig; mtime?: number } | null;
+    if (saved?.found && saved.target && (saved.mtime ?? 0) > failedAt.current - 1000 && !sameTarget(saved.target, target)) {
+      await applyConfig(saved.target);
+      return;
+    }
+    if ((await pingTarget(target)).ok) await connectAndRun(target, { quiet: true });
+  };
+  const waitingForApp = hydrated && !sample && view === "workspace" && conn?.status === "fail" && !running;
+  useEffect(() => {
+    if (!waitingForApp) return;
+    let busy = false;
+    const timer = setInterval(async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        await retryRef.current();
+      } finally {
+        busy = false;
+      }
+    }, RETRY_MS);
+    return () => clearInterval(timer);
+  }, [waitingForApp]);
 
   const targetCheck = useMemo(() => checkTargetUrl(target.url), [target.url]);
   const templateError = useMemo(() => validateTemplate(target.bodyTemplate), [target.bodyTemplate]);
@@ -394,14 +448,20 @@ export default function Dashboard() {
     }
   }
 
-  async function runAudit(demo?: { target: TargetConfig; judge: ProviderConfig; attack: AttackConfig }) {
-    if (!demo && blockReason) return;
+  /**
+   * Run the audit. With no argument it uses the current settings. `over` lets a caller start a
+   * run in the same click that changes the settings (the demo card, or right after connecting),
+   * before React has re-rendered with them.
+   */
+  async function runAudit(over?: { target?: TargetConfig; judge?: ProviderConfig; attack?: AttackConfig; all?: boolean }) {
+    if (!over && blockReason) return;
     // Pick up any playbook edits made since the page loaded.
     const pbs = await refreshPlaybooks();
     const allIds = pbs.flatMap((p) => p.tests.map((t) => t.id));
-    // The demo always runs every test; otherwise run what's ticked.
-    const ordered = demo ? allIds : allIds.filter((id) => selected.has(id));
-    if (demo) setSelected(new Set(allIds));
+    // The demo always runs every test; otherwise run what's ticked (or everything, if nothing is).
+    const ticked = allIds.filter((id) => selected.has(id));
+    const ordered = over?.all || (over && ticked.length === 0) ? allIds : ticked;
+    if (ordered === allIds) setSelected(new Set(allIds));
     if (!ordered.length) {
       setRunError("Siren couldn't find any tests to run. Check the playbooks folder.");
       return;
@@ -415,7 +475,7 @@ export default function Dashboard() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      await streamAudit(ordered, demo?.attack ?? attack, controller.signal, demo?.target, demo?.judge);
+      await streamAudit(ordered, over?.attack ?? attack, controller.signal, over?.target, over?.judge);
     } catch (e) {
       if ((e as Error).name !== "AbortError") setRunError((e as Error).message);
     } finally {
@@ -443,27 +503,41 @@ export default function Dashboard() {
     setAttack(demoAttack);
     setConn(null);
     setView("workspace");
-    await runAudit({ target: demo, judge: demoJudge, attack: demoAttack });
+    await runAudit({ target: demo, judge: demoJudge, attack: demoAttack, all: true });
   }
 
-  /** Say hello to the app so the user knows the setup works before running a full audit. */
-  async function checkConnection(t: TargetConfig) {
+  /**
+   * Say hello to the app so the user knows the setup works before a full audit. Returns the
+   * setup that worked (with the response key corrected if Siren had to find it), or null.
+   * `quiet` skips the "saying hello…" state, for the background re-checks after a failure.
+   */
+  async function connect(t: TargetConfig, opts: { quiet?: boolean } = {}): Promise<TargetConfig | null> {
     const label = targetLabel(t.url);
-    setConn({ status: "checking", label });
+    if (!opts.quiet) setConn({ status: "checking", label });
     const ping = await pingTarget(t);
+    if (!ping.ok) {
+      failedAt.current = Date.now();
+      setConn({
+        status: "fail",
+        label,
+        answeredWithError: !!ping.status,
+        error: ping.error ?? (ping.status ? `Your app answered with an error (HTTP ${ping.status}).` : "No reply came back."),
+      });
+      return null;
+    }
     // The reply wasn't where the setup said, but Siren found it under a common key: save that.
-    const fixedPath = ping.ok ? ping.detectedPath : undefined;
+    const fixedPath = ping.detectedPath;
     if (fixedPath) setTarget((cur) => (cur.url === t.url ? { ...cur, responsePath: fixedPath } : cur));
-    setConn(
-      ping.ok
-        ? { status: "ok", label, reply: ping.reply, fixedPath }
-        : {
-            status: "fail",
-            label,
-            answeredWithError: !!ping.status,
-            error: ping.error ?? (ping.status ? `Your app answered with an error (HTTP ${ping.status}).` : "No reply came back."),
-          },
-    );
+    setConn({ status: "ok", label, reply: ping.reply, fixedPath });
+    return fixedPath ? { ...t, responsePath: fixedPath } : t;
+  }
+
+  /** Connect, then start the audit straight away if the user left that option on. */
+  async function connectAndRun(t: TargetConfig, opts: { quiet?: boolean } = {}) {
+    const working = await connect(t, opts);
+    if (!working || !autoRun || abortRef.current) return;
+    // Attacker mode needs a model; without one, fall back to the built-in tests instead of failing.
+    await runAudit({ target: working, attack: { ...attack, enabled: attack.enabled && hasModel } });
   }
 
   /** A setup arrived from the Copy Setup Prompt flow (pasted, or picked up from the saved file). */
@@ -475,7 +549,7 @@ export default function Dashboard() {
     setLogs([]);
     setRunError(null);
     setProgress({ done: 0, total: 0 });
-    await checkConnection(t);
+    await connectAndRun(t);
   }
 
   /**
@@ -589,9 +663,11 @@ export default function Dashboard() {
           target={target}
           onTargetChange={setTarget}
           onApplyConfig={applyConfig}
+          autoRun={autoRun}
+          onAutoRunChange={setAutoRun}
           onManualContinue={() => {
             setView("workspace");
-            void checkConnection(target);
+            void connectAndRun(target);
           }}
           manualReady={targetCheck.ok && !templateError}
           hasResults={live.length > 0}
@@ -616,6 +692,8 @@ export default function Dashboard() {
               setConn(null);
             }}
             onApplyConfig={applyConfig}
+            autoRun={autoRun}
+            onAutoRunChange={setAutoRun}
             isDemo={isDemo}
             disabled={running}
           />
@@ -671,6 +749,19 @@ export default function Dashboard() {
                         : "Check that your app is running on this computer, then try again."}{" "}
                       Wrong address? Open <span className="text-ink-dim">Advanced / Manual Setup</span> on the left.
                     </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <CopyButton
+                        variant="gold"
+                        label="Copy Fix Prompt for Claude Code / Cursor"
+                        text={buildConnectFixPrompt({ target, error: conn.error ?? "", answered: !!conn.answeredWithError, configPath })}
+                      />
+                      <span className="text-[12.5px] text-ink-dim">Paste it into your coding agent in your app&apos;s folder.</span>
+                    </div>
+                    <p className="mt-3 flex items-start gap-2 text-[12.5px] text-ink-dim">
+                      <span aria-hidden className="siren-pulse mt-1.5 size-2 shrink-0 rounded-full bg-gold" />
+                      Siren checks again every few seconds and connects by itself as soon as your app answers
+                      {autoRun ? ", then starts the audit." : "."}
+                    </p>
                   </>
                 )}
               </div>
@@ -680,7 +771,7 @@ export default function Dashboard() {
                     Run audit
                   </Button>
                 )}
-                {conn.status === "fail" && <Button onClick={() => checkConnection(target)}>Try again</Button>}
+                {conn.status === "fail" && <Button onClick={() => connectAndRun(target)}>Try again</Button>}
                 {conn.status !== "checking" && (
                   <button aria-label="Dismiss" className="p-1 text-muted hover:text-ink" onClick={() => setConn(null)}>
                     <X className="size-4" />
