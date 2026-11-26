@@ -97,6 +97,8 @@ interface Connection {
   error?: string;
   /** Siren found the reply under this key and saved it as the response path. */
   fixedPath?: string;
+  /** The app answered, but with an error (as opposed to not answering at all). */
+  answeredWithError?: boolean;
 }
 
 interface Ping {
@@ -444,7 +446,12 @@ export default function Dashboard() {
     setConn(
       ping.ok
         ? { status: "ok", label, reply: ping.reply, fixedPath }
-        : { status: "fail", label, error: ping.error ?? (ping.status ? `Your app answered with an error (HTTP ${ping.status}).` : "No reply came back.") },
+        : {
+            status: "fail",
+            label,
+            answeredWithError: !!ping.status,
+            error: ping.error ?? (ping.status ? `Your app answered with an error (HTTP ${ping.status}).` : "No reply came back."),
+          },
     );
   }
 
@@ -629,12 +636,15 @@ export default function Dashboard() {
                 {conn.status === "fail" && (
                   <>
                     <p className="font-semibold text-fail">
-                      Siren couldn&apos;t reach your app at <span className="font-mono text-[12px] font-normal">{conn.label}</span>
+                      {conn.answeredWithError ? "Your app answered with an error at " : "Siren couldn\u2019t reach your app at "}
+                      <span className="font-mono text-[12px] font-normal">{conn.label}</span>
                     </p>
                     <p className="mt-1 text-ink-dim">{conn.error}</p>
                     <p className="mt-1 text-muted">
-                      Check that your app is running on this computer, then try again. Wrong address? Open{" "}
-                      <span className="text-ink-dim">Advanced / Manual Setup</span> on the left.
+                      {conn.answeredWithError
+                        ? "Siren reached your app, but it sent back an error instead of a chat reply. Look at your app\u2019s own terminal window for the cause (a missing API key is the usual one), then try again."
+                        : "Check that your app is running on this computer, then try again."}{" "}
+                      Wrong address? Open <span className="text-ink-dim">Advanced / Manual Setup</span> on the left.
                     </p>
                   </>
                 )}

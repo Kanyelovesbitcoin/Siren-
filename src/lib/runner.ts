@@ -54,7 +54,7 @@ export function targetFailure(call: TargetCall): string | null {
     return "Your app rate-limited this request (HTTP 429), so the test couldn't run. Re-run it on its own.";
   }
   if (!is2xx(call.status)) {
-    return `Your app returned an error (HTTP ${call.status})${apiError ? `: ${apiError}` : ""}, so this test couldn't be graded.`;
+    return `Your app returned an error (HTTP ${call.status})${apiError ? `: ${apiError}` : "."}`;
   }
   if (apiError) return `Your app replied with an error instead of an answer: ${apiError}`;
   return null;

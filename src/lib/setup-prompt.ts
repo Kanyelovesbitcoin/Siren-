@@ -6,11 +6,11 @@ export function buildSetupPrompt(configPath?: string | null): string {
   const save = configPath
     ? `
 ## Save it too, if you can
-If you are able to write a file outside this project, also save that same JSON (just the JSON, no code fence) to:
+If you are able to write a file outside this project, also save that same JSON (just the JSON, no code fence) as siren.config.json at exactly this path:
 
 ${configPath}
 
-Create the folder if it doesn't exist. Siren watches that file and picks it up by itself. If you can't write there, skip this step; I'll paste the block in myself.
+Siren watches that file and loads it by itself. If you can't write there, skip this step; I'll paste the block in myself. Don't create siren.config.json inside this project.
 `
     : "";
 

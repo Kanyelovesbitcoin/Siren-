@@ -83,9 +83,9 @@ You don't need to know your app's "endpoint" or request format. Your coding agen
 
 1. Click **Copy Setup Prompt for Claude Code / Cursor**.
 2. Open your app's folder in Claude Code or Cursor, paste the prompt, and send it. The agent reads your code and replies with a small setup block (your app's local address, what it expects to receive, and where the reply is).
-3. Paste that block into Siren and click **Use this setup**. If the agent was able to save the block to `~/.siren/target.json`, Siren picks it up by itself and offers a **Use this setup** button, so there's nothing to paste.
+3. Paste that block into Siren and click **Use this setup**. If the agent was able to save the block as `siren.config.json` in the Siren folder (the prompt gives it the exact path), Siren loads it by itself and offers a **Use this setup** button, so there's nothing to paste.
 
-Siren then says hello to your app and shows you the reply. If it looks like your chatbot talking, hit **Run audit**.
+Siren then says hello to your app and shows you the reply. If it looks like your chatbot talking, hit **Run audit**. If your app answers with an error, Siren shows that error instead; and if the reply was under a different key than the setup said, Siren finds it and saves the right one.
 
 The setup block looks like this, in case you want to write one by hand:
 
@@ -276,7 +276,7 @@ src/
     api/playbooks          GET  — load + validate playbooks
     api/provider/models    POST — "Test connection", list judge models
     api/target/test        POST — single test message to your target
-    api/config             GET  — setup saved by your coding agent (~/.siren/target.json)
+    api/config             GET  — setup saved by your coding agent (siren.config.json)
     api/audit              POST — run audit, streams NDJSON events
   components/              Start screen, Target, Judge, Suites, live ResultCard, UI kit
   lib/
@@ -308,7 +308,7 @@ Copy `.env.example` to `.env.local`:
 | `SIREN_TARGET_TIMEOUT_MS` | Per-request timeout to your app (default 30000) |
 | `SIREN_PORT` | Default dashboard port for the CLI |
 | `SIREN_DEMO_PORT` | Default demo bot port (default 3001) |
-| `SIREN_CONFIG_FILE` | Where Siren looks for a saved setup (default `~/.siren/target.json`) |
+| `SIREN_CONFIG_FILE` | Where Siren looks for a saved setup (default `siren.config.json` in the Siren folder; `~/.siren/target.json` is also read) |
 
 ---
 
