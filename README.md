@@ -102,7 +102,7 @@ The setup block looks like this, in case you want to write one by hand:
 
 ### On a phone
 
-Siren tests apps running on your computer, so a phone can't scan anything. On screens narrower than 640px Siren shows a **sample report** first: a real audit of the demo bot with the score, the findings, and working **Copy Fix Prompt** buttons, plus a banner asking visitors to open Siren on their computer. It's read-only and makes no network requests. "Use the full app on this screen anyway" skips it. On a computer, the start screen has a **See a sample report first** link to the same page.
+Siren tests apps running on your computer, so a phone can't scan anything. On screens narrower than 640px Siren shows a **sample report** first: a real audit of the demo bot with the score, the findings grouped the same way as on the dashboard, and working **Copy Fix Prompt** buttons, plus a banner asking visitors to open Siren on their computer. It's read-only and makes no network requests. "Use the full app on this screen anyway" skips it. On a computer, the start screen has a **See a sample report first** link to the same page.
 
 ### Advanced / Manual Setup
 

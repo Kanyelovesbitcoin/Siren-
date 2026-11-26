@@ -45,23 +45,11 @@ function OutcomeChip({ outcome }: { outcome: TurnOutcome }) {
 }
 
 /**
- * Load tests put a status-code and latency summary ahead of a sample reply. Those numbers are
- * all in the Technical details drawer ("Measurements"), so the main view shows just the reply.
- */
-function splitLoadSummary(response: string): { isSample: boolean; reply: string } {
-  // Older saved results put a "Status breakdown" summary ahead of the sample reply.
-  const marker = "\n\nSample response:\n";
-  const i = response.indexOf(marker);
-  if (i < 0 || !response.startsWith("Status breakdown")) return { isSample: false, reply: response };
-  return { isSample: true, reply: response.slice(i + marker.length) };
-}
-
-/**
  * One reply from the app. The message Siren sent is deliberately not shown here; it is in the
  * Technical details drawer ("What Siren sent"), so the card leads with what matters.
  */
 function TurnRow({ turn, total, isSample }: { turn: TurnRecord; total: number; isSample: boolean }) {
-  const { reply } = splitLoadSummary(turn.response);
+  const reply = turn.response;
   return (
     <div className="rounded-xl border border-line bg-charcoal-2/70 p-3.5">
       {turn.freshConversation && (
