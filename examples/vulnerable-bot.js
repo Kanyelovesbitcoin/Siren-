@@ -170,7 +170,7 @@ server.on("error", (err) => {
   Another app is using it (maybe an earlier demo bot that's still running).
   Close that app, or pick a different port:
 
-    npm run try -- --demo-port ${PORT + 1}
+    npm run try -- --demo-port ${PORT + 10}
 `);
   } else {
     console.error(`\n  The demo bot couldn't start: ${err.message}\n`);

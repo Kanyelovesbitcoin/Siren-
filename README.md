@@ -24,7 +24,7 @@ npm run try
 
 `npm run try` starts Siren **and** a deliberately weak demo chatbot in the same terminal, waits until both are ready, and opens your browser on the start screen. Click **Try the Demo Bot** and you'll see leaks, injections and runaway outputs get caught, plus a few passes where the bot holds up. Press `Ctrl+C` to stop both.
 
-If a port is busy, Siren tells you in plain English which one and prints the command to use a different one (`npm run try -- --port 4242` or `npm run try -- --demo-port 3002`).
+If a port is busy, Siren tells you in plain English which one and prints the command to use a different one (`npm run try -- --port 4242` or `npm run try -- --demo-port 3011`).
 
 ## Quick start with your own app
 

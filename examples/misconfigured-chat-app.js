@@ -10,7 +10,7 @@
 // └──────────────────────────────────────────────────────────────────────────┘
 //
 //   node examples/misconfigured-chat-app.js
-//   → http://127.0.0.1:3002/v1/chat/completions   (override with CANARY_DEMO_PORT)
+//   → http://127.0.0.1:3002/v1/chat/completions   (set CANARY_DEMO_PORT for another port)
 //
 // Request:  POST { "model": "canary-demo", "messages": [{ "role": "user", "content": "..." }] }
 // Response: { "id": "...", "object": "chat.completion", "model": "canary-demo",
@@ -199,7 +199,11 @@ server.on("error", (err) => {
   Another app is using it (maybe an earlier copy that's still running).
   Close that app, or pick a different port:
 
-    CANARY_DEMO_PORT=${PORT + 1} node examples/misconfigured-chat-app.js
+    ${
+      process.platform === "win32"
+        ? `$env:CANARY_DEMO_PORT=${PORT + 1}; node examples/misconfigured-chat-app.js`
+        : `CANARY_DEMO_PORT=${PORT + 1} node examples/misconfigured-chat-app.js`
+    }
 `);
   } else {
     console.error(`\n  The misconfigured demo app couldn't start: ${err.message}\n`);

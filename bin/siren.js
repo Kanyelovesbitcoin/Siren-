@@ -144,7 +144,7 @@ function openBrowser(url) {
     process.platform === "darwin"
       ? ["open", [url]]
       : process.platform === "win32"
-        ? ["cmd", ["/c", "start", '""', url]]
+        ? ["cmd", ["/c", "start", '""', `"${url}"`]] // quoted: cmd would otherwise cut the URL at "&"
         : ["xdg-open", [url]];
   try {
     const child = spawn(cmd[0], cmd[1], { stdio: "ignore", detached: true, windowsVerbatimArguments: process.platform === "win32" });
@@ -209,7 +209,7 @@ async function main() {
     const demoBusy = await portInUse(args.demoPort);
     if (demoBusy) {
       console.error(
-        explainPortClash({ port: args.demoPort, reason: demoBusy, what: "the demo bot", demo: true, flag: "--demo-port", suggestion: args.demoPort + 1 }),
+        explainPortClash({ port: args.demoPort, reason: demoBusy, what: "the demo bot", demo: true, flag: "--demo-port", suggestion: args.demoPort + 10 }),
       );
       process.exit(1);
     }
