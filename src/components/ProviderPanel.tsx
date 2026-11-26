@@ -64,25 +64,28 @@ export default function ProviderPanel({
 
   const choice = (selected: boolean) =>
     cx(
-      "flex w-full items-start gap-3 rounded-xl border p-3 text-left transition disabled:opacity-50",
+      "flex w-full cursor-pointer items-start gap-3 rounded-xl border p-3 text-left transition has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-gold",
       selected ? "border-gold/50 bg-gold/[0.07]" : "border-line bg-obsidian/60 hover:border-line-strong",
     );
   const dot = (selected: boolean) =>
-    cx("mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border", selected ? "border-gold" : "border-line-strong");
+    cx("mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border", selected ? "border-gold" : "border-field");
 
   return (
     <Card title="AI Grader (Optional)" icon={<Gavel className="size-4" />}>
       <div className="space-y-4">
-        <div role="radiogroup" aria-label="How results are graded" className="space-y-2">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={rulesOnly}
-            disabled={disabled}
-            onClick={() => onChange({ ...value, mode: "heuristic" })}
-            className={choice(rulesOnly)}
-          >
-            <span className={dot(rulesOnly)}>{rulesOnly && <span className="size-2 rounded-full bg-gold" />}</span>
+        {/* Native radio buttons: arrow keys, one tab stop and screen reader support come for free. */}
+        <fieldset className="space-y-2">
+          <legend className="sr-only">How results are graded</legend>
+          <label className={choice(rulesOnly)}>
+            <input
+              type="radio"
+              name="siren-grading"
+              className="sr-only"
+              checked={rulesOnly}
+              disabled={disabled}
+              onChange={() => onChange({ ...value, mode: "heuristic" })}
+            />
+            <span aria-hidden className={dot(rulesOnly)}>{rulesOnly && <span className="size-2 rounded-full bg-gold" />}</span>
             <span className="min-w-0">
               <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
                 Rules only
@@ -90,38 +93,39 @@ export default function ProviderPanel({
                   No extra setup needed.
                 </span>
               </span>
-              <span className="mt-1 block text-xs leading-relaxed text-muted">
+              <span className="mt-1 block text-xs leading-relaxed text-ink-dim">
                 Siren checks every reply against its built-in rules. Fast, and nothing to install.
               </span>
             </span>
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={!rulesOnly}
-            disabled={disabled}
-            onClick={() => onChange({ ...value, mode: "judge" })}
-            className={choice(!rulesOnly)}
-          >
-            <span className={dot(!rulesOnly)}>{!rulesOnly && <span className="size-2 rounded-full bg-gold" />}</span>
+          </label>
+          <label className={choice(!rulesOnly)}>
+            <input
+              type="radio"
+              name="siren-grading"
+              className="sr-only"
+              checked={!rulesOnly}
+              disabled={disabled}
+              onChange={() => onChange({ ...value, mode: "judge" })}
+            />
+            <span aria-hidden className={dot(!rulesOnly)}>{!rulesOnly && <span className="size-2 rounded-full bg-gold" />}</span>
             <span className="min-w-0">
               <span className="block text-sm font-medium text-ink">Use an AI grader</span>
-              <span className="mt-1 block text-xs leading-relaxed text-muted">
+              <span className="mt-1 block text-xs leading-relaxed text-ink-dim">
                 A second AI model reads each reply for a more nuanced verdict. Needs Ollama, LM Studio or an API key. Also unlocks
                 attacker mode.
               </span>
             </span>
-          </button>
-        </div>
+          </label>
+        </fieldset>
 
         {!rulesOnly && (
           <div className="space-y-4 border-t border-line pt-4">
-            <div role="tablist" aria-label="Model provider" className="grid grid-cols-3 gap-1 rounded-xl border border-line bg-obsidian p-1">
+            <div role="group" aria-label="Model provider" className="grid grid-cols-3 gap-1 rounded-xl border border-line bg-obsidian p-1">
               {ORDER.map((p) => (
                 <button
                   key={p}
-                  role="tab"
-                  aria-selected={value.provider === p}
+                  type="button"
+                  aria-pressed={value.provider === p}
                   disabled={disabled}
                   onClick={() => pickProvider(p)}
                   className={cx(

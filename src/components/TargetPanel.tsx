@@ -81,12 +81,18 @@ export function ManualSetupFields({
             className="font-mono text-[13px]"
             value={value.url}
             invalid={!check.ok && !!value.url}
+            aria-describedby={!check.ok && value.url ? "target-url-error" : undefined}
             placeholder="http://localhost:3000/api/chat"
             onChange={(e) => set("url", e.target.value)}
             disabled={disabled}
           />
         </div>
-        {!check.ok && !check.external && value.url && <p className="mt-1.5 text-xs text-fail">{check.reason}</p>}
+        {!check.ok && value.url && (
+          // An external address is explained in the banner above; keep the reason available to screen readers here.
+          <p id="target-url-error" className={cx("mt-1.5 text-xs text-fail", check.external && "sr-only")}>
+            {check.reason}
+          </p>
+        )}
       </div>
 
       <div>
@@ -98,6 +104,7 @@ export function ManualSetupFields({
               <div key={i} className="flex gap-2">
                 <Input
                   className="w-[42%] font-mono text-xs"
+                  aria-label={`Header ${i + 1} name`}
                   placeholder="Authorization"
                   value={h.key}
                   onChange={(e) => {
@@ -111,6 +118,7 @@ export function ManualSetupFields({
                   <Input
                     className="pr-8 font-mono text-xs"
                     type={secret && !revealed[i] ? "password" : "text"}
+                    aria-label={`Header ${i + 1} value`}
                     placeholder="Bearer dev-token"
                     value={h.value}
                     onChange={(e) => {
@@ -156,7 +164,9 @@ export function ManualSetupFields({
       </div>
 
       <div>
-        <Label hint={<span className="font-mono">{"{{prompt}}"} · {"{{messages}}"}</span>}>JSON body template</Label>
+        <Label htmlFor="body-template" hint={<span className="font-mono">{"{{prompt}}"} · {"{{messages}}"}</span>}>
+          JSON body template
+        </Label>
         <div className="mb-2 flex flex-wrap gap-1.5">
           {PRESETS.map((p) => (
             <button
@@ -171,16 +181,20 @@ export function ManualSetupFields({
           ))}
         </div>
         <TextArea
+          id="body-template"
           rows={5}
+          aria-describedby="body-template-help"
           value={value.bodyTemplate}
           invalid={!!templateError}
           onChange={(e) => set("bodyTemplate", e.target.value)}
           disabled={disabled}
         />
         {templateError ? (
-          <p className="mt-1.5 text-xs text-fail">{templateError}</p>
+          <p id="body-template-help" className="mt-1.5 text-xs text-fail">
+            {templateError}
+          </p>
         ) : (
-          <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
+          <p id="body-template-help" className="mt-1.5 text-[11px] leading-relaxed text-muted">
             <span className="font-mono text-ink-dim">{"{{messages}}"}</span> replays the full conversation so multi-turn tests behave
             like production.
           </p>
@@ -386,8 +400,11 @@ export default function TargetPanel({
           </summary>
           <div className="space-y-4 px-3 pb-3">
             <div>
-              <Label hint="used for grading & fix prompts">What is your app for?</Label>
+              <Label htmlFor="app-context" hint="used for grading & fix prompts">
+                What is your app for?
+              </Label>
               <TextArea
+                id="app-context"
                 rows={3}
                 className="font-sans text-[13px]"
                 placeholder="A support assistant for Acme's widget store. It should only answer product, order and shipping questions and never discuss pricing changes."
@@ -397,9 +414,13 @@ export default function TargetPanel({
               />
             </div>
             <div>
-              <Label hint="comma-separated">Canary phrases</Label>
+              <Label htmlFor="canary-phrases" hint="comma-separated">
+                Canary phrases
+              </Label>
               <Input
                 className="font-mono text-xs"
+                id="canary-phrases"
+                aria-describedby="canary-phrases-help"
                 placeholder="ACME-INTERNAL-42, never mention competitor"
                 value={(value.canaries ?? []).join(", ")}
                 onChange={(e) =>
@@ -411,7 +432,7 @@ export default function TargetPanel({
                 onBlur={() => set("canaries", (value.canaries ?? []).map((s) => s.trim()).filter(Boolean))}
                 disabled={disabled}
               />
-              <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
+              <p id="canary-phrases-help" className="mt-1.5 text-[11px] leading-relaxed text-muted">
                 Put a unique phrase in your real system prompt and list it here. If it ever shows up in a reply, that test fails
                 automatically.
               </p>

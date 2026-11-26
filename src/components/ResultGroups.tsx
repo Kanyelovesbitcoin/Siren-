@@ -75,7 +75,7 @@ export default function ResultGroups({
       {inProgress.length > 0 && (
         <section aria-label="Testing now">
           <h3 className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-gold">
-            <span className="siren-pulse size-2 rounded-full bg-gold" />
+            <span aria-hidden className="siren-pulse size-2 rounded-full bg-gold" />
             Testing now
           </h3>
           <div className="space-y-3">
@@ -92,25 +92,32 @@ export default function ResultGroups({
         if (group.length === 0) return null;
         const open = openGroups[g.verdict];
         return (
-          <section key={g.verdict} data-group={g.verdict}>
-            <button
-              className="flex w-full items-center gap-3 text-left"
-              aria-expanded={open}
-              onClick={() => setOpenGroups((prev) => ({ ...prev, [g.verdict]: !prev[g.verdict] }))}
-            >
-              <span className={cx("size-2 shrink-0 rounded-full", g.dot)} />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-baseline gap-2">
+          <section key={g.verdict} data-group={g.verdict} aria-labelledby={`group-${g.verdict}`}>
+            {/* A heading that contains the toggle, so screen reader users can jump between groups. */}
+            <h3 id={`group-${g.verdict}`}>
+              <button
+                className="flex min-h-11 w-full items-center gap-3 text-left"
+                aria-expanded={open}
+                aria-describedby={`group-${g.verdict}-help`}
+                onClick={() => setOpenGroups((prev) => ({ ...prev, [g.verdict]: !prev[g.verdict] }))}
+              >
+                <span aria-hidden className={cx("size-2 shrink-0 rounded-full", g.dot)} />
+                <span className="flex min-w-0 flex-1 items-baseline gap-2">
                   <span className={cx("text-[15px] font-semibold", g.text)}>{g.title}</span>
-                  <span className="font-mono text-[13px] text-ink-dim tabular-nums">{group.length}</span>
+                  <span data-count className="font-mono text-[13px] font-normal text-ink-dim tabular-nums">
+                    {group.length}
+                    <span className="sr-only">{group.length === 1 ? " result" : " results"}</span>
+                  </span>
                 </span>
-                <span className="block text-xs leading-relaxed text-muted">{g.help}</span>
-              </span>
-              <span className="flex shrink-0 items-center gap-1 text-xs text-muted">
-                {open ? "Hide" : "Show"}
-                <ChevronDown className={cx("size-4 transition", !open && "-rotate-90")} />
-              </span>
-            </button>
+                <span aria-hidden className="flex shrink-0 items-center gap-1 text-xs font-normal text-muted">
+                  {open ? "Hide" : "Show"}
+                  <ChevronDown className={cx("size-4 transition", !open && "-rotate-90")} />
+                </span>
+              </button>
+            </h3>
+            <p id={`group-${g.verdict}-help`} className="-mt-1.5 ml-5 text-xs leading-relaxed text-muted">
+              {g.help}
+            </p>
             {open && (
               <div className="mt-3 space-y-3">
                 {group.map((l) => (

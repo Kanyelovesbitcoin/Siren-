@@ -162,8 +162,8 @@ function TechnicalDetails({ live }: { live: LiveTest }) {
   }
   return (
     <details className="group rounded-xl border border-line bg-obsidian/40">
-      <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-muted select-none hover:text-ink">
-        <span className="mr-1 inline-block transition group-open:rotate-90">›</span> Technical details
+      <summary className="flex min-h-9 cursor-pointer list-none items-center px-3 py-2 text-xs font-medium text-ink-dim select-none hover:text-ink">
+        <span aria-hidden className="mr-1 inline-block transition group-open:rotate-90">›</span> Technical details
       </summary>
       <div className="space-y-3 px-3 pb-3 text-[12px] text-ink-dim">
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
@@ -269,33 +269,42 @@ export default function ResultCard({
       )}
     >
       <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
-        <button className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 text-left" onClick={onToggle} aria-expanded={open}>
-          <VerdictBadge verdict={r ? r.verdict : "running"} />
-          <span className="text-sm font-medium text-ink">{live.testName}</span>
-          {r && <SeverityChip severity={r.severity} />}
-          {r && live.previousVerdict && <ChangeChip before={live.previousVerdict} after={r.verdict} />}
-        </button>
+        {/* The test name is a heading holding the one real expand/collapse control for this card. */}
+        <h4 className="flex min-w-0 flex-1">
+          <button
+            className="flex min-h-9 min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 text-left"
+            onClick={onToggle}
+            aria-expanded={open}
+          >
+            <VerdictBadge verdict={r ? r.verdict : "running"} />
+            <span className="text-sm font-medium text-ink">{live.testName}</span>
+            {r && <SeverityChip severity={r.severity} />}
+            {r && live.previousVerdict && <ChangeChip before={live.previousVerdict} after={r.verdict} />}
+          </button>
+        </h4>
         <span className="flex items-center gap-3 text-[11px] text-muted">
           {r && onRerun && (
             <button
               onClick={onRerun}
               disabled={running}
               title="Run this again — e.g. after applying a fix"
-              className="flex items-center gap-1 rounded-md border border-line-strong px-1.5 py-0.5 text-[11px] text-ink-dim transition hover:border-gold/50 hover:text-gold disabled:opacity-40"
+              className="flex min-h-7 items-center gap-1 rounded-md border border-line-strong px-2 py-1 text-[11px] text-ink-dim transition hover:border-gold/50 hover:text-gold disabled:opacity-40"
             >
               <RefreshCw className="size-3" />
               Re-attack
             </button>
           )}
-          <button aria-label={open ? "Collapse" : "Expand"} onClick={onToggle}>
+          {/* Mouse/touch convenience only. The heading button above is the control assistive tech uses. */}
+          <button aria-hidden tabIndex={-1} className="-m-2 p-2" onClick={onToggle}>
             <ChevronDown className={cx("size-4 transition", !open && "-rotate-90")} />
           </button>
         </span>
       </div>
       {!open && preview && (
-        <button className="-mt-1 block w-full px-4 pb-3 text-left" onClick={onToggle} tabIndex={-1}>
+        // A summary sentence, clickable for convenience. Not a second control: the heading button toggles the card.
+        <p className="-mt-1 cursor-pointer px-4 pb-3 text-left" onClick={onToggle}>
           <span className="line-clamp-2 text-[12.5px] leading-relaxed text-ink-dim">{preview}</span>
-        </button>
+        </p>
       )}
 
       {open && (
@@ -331,7 +340,7 @@ export default function ResultCard({
               <ol className="mt-4 flex flex-col overflow-hidden rounded-xl border border-line bg-obsidian/60 text-[12.5px] text-ink-dim sm:flex-row sm:items-stretch">
                 <li className="flex items-center gap-2.5 px-3 py-2.5">
                   <StepNumber n={1} />
-                  <CopyButton text={r.fixPrompt} label="Copy Fix Prompt" variant="gold" className="px-3 py-1.5 text-[13px] whitespace-nowrap" />
+                  <CopyButton text={r.fixPrompt} label="Copy Fix Prompt" variant="gold" className="min-h-11 px-3 py-1.5 text-[13px] whitespace-nowrap sm:min-h-0" />
                 </li>
                 <li className="flex flex-1 items-center gap-2.5 border-t border-line px-3 py-2.5 sm:border-t-0 sm:border-l">
                   <ChevronRight className="-ml-1 hidden size-4 shrink-0 text-muted sm:block" />
@@ -345,14 +354,18 @@ export default function ResultCard({
                     <button
                       onClick={onRerun}
                       disabled={running}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-gold/40 px-2.5 py-1.5 text-xs whitespace-nowrap text-gold transition hover:bg-gold/10 disabled:opacity-40"
+                      className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-gold/40 px-2.5 py-1.5 text-xs whitespace-nowrap text-gold transition hover:bg-gold/10 disabled:opacity-40 sm:min-h-0"
                     >
                       <RefreshCw className="size-3.5" /> Re-attack to verify
                     </button>
                   </li>
                 )}
               </ol>
-              <button className="mt-2.5 flex items-center gap-1.5 text-xs text-muted hover:text-gold" onClick={() => setShowPrompt((s) => !s)}>
+              <button
+                className="mt-1 flex min-h-9 items-center gap-1.5 text-xs text-ink-dim hover:text-gold"
+                aria-expanded={showPrompt}
+                onClick={() => setShowPrompt((s) => !s)}
+              >
                 <Sparkles className="size-3.5" />
                 {showPrompt ? "Hide" : "Preview"} fix prompt
               </button>

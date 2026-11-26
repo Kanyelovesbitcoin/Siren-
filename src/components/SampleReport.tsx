@@ -47,7 +47,13 @@ export default function SampleReport({
                 Siren tests AI apps that run on your computer, so scanning your own app needs a desktop or laptop. Open this page there
                 to get started.
               </p>
-              {pageUrl && <CopyButton text={pageUrl} label="Copy link to open on my computer" className="mt-3 px-3 py-1.5 text-[13px]" />}
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                {pageUrl && <CopyButton text={pageUrl} label="Copy link to open on my computer" className="min-h-11 px-3 py-1.5 text-[13px]" />}
+                {/* Zooming in on a computer also makes the screen "small". Don't make those users hunt for the way out. */}
+                <button className="min-h-11 text-left text-[13px] text-gold underline underline-offset-4" onClick={onLeave}>
+                  Already on a computer? Use the full app
+                </button>
+              </div>
             </>
           ) : (
             <p className="mt-1 text-ink-dim">It shows what you get after Siren scans an app. Nothing here is from your own app.</p>
@@ -56,7 +62,7 @@ export default function SampleReport({
       </div>
 
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">
+        <h1 data-screen-heading tabIndex={-1} className="text-2xl font-semibold tracking-tight text-ink outline-none">
           What Siren found in a <span className="gold-text">practice chatbot</span>
         </h1>
         <p className="mt-2 text-[14px] leading-relaxed text-ink-dim">
@@ -79,6 +85,7 @@ export default function SampleReport({
       </div>
 
       {/* Same grouped list as the live dashboard. The first problem starts open; read-only, so no re-attack. */}
+      <h2 className="sr-only">Findings</h2>
       <ResultGroups items={CARDS} running={false} />
 
       <div className="rounded-2xl border border-line bg-charcoal p-5 text-center">
@@ -88,10 +95,7 @@ export default function SampleReport({
             ? "Open Siren on your computer. It runs there, tests the app you're building, and nothing leaves your machine."
             : "Head back to the start screen to try the demo bot or connect your app."}
         </p>
-        <button
-          className="mt-3 inline-flex items-center gap-1.5 text-xs text-gold/90 underline-offset-4 hover:underline"
-          onClick={onLeave}
-        >
+        <button className="mt-2 inline-flex min-h-11 items-center gap-1.5 text-xs text-gold underline underline-offset-4" onClick={onLeave}>
           {onPhone ? "Use the full app on this screen anyway" : "Back to the start screen"}
           <ArrowRight className="size-3.5" />
         </button>

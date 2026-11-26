@@ -166,6 +166,20 @@ export default function Dashboard() {
   const [conn, setConn] = useState<Connection | null>(null);
   /** The read-only sample report. Shown first on phone-sized screens, and on request from the start screen. */
   const [sample, setSample] = useState<"phone" | "requested" | null>(null);
+  /** Spoken by screen readers through a polite live region: audit started, finished, stopped. */
+  const [announcement, setAnnouncement] = useState("");
+  const firstScreen = useRef(true);
+
+  // When the screen changes (start ↔ dashboard ↔ sample), move keyboard focus to the new screen's
+  // heading. Otherwise focus is left on a button that no longer exists and the user is lost.
+  useEffect(() => {
+    if (!hydrated) return;
+    if (firstScreen.current) {
+      firstScreen.current = false;
+      return;
+    }
+    requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-screen-heading]")?.focus({ preventScroll: true }));
+  }, [hydrated, view, sample]);
   const abortRef = useRef<AbortController | null>(null);
   const playbooksRef = useRef<Playbook[]>([]);
   const rerunRef = useRef(false);
@@ -295,6 +309,7 @@ export default function Dashboard() {
     switch (e.type) {
       case "start":
         // During a re-attack the total is set up front (it may span two requests).
+        setAnnouncement(`Audit started. Running ${e.total} ${e.total === 1 ? "test" : "tests"}.`);
         if (!rerunRef.current) {
           setProgress({ done: 0, total: e.total });
           // Bring the results into view; the test in progress shows at the top of them.
@@ -327,6 +342,11 @@ export default function Dashboard() {
         break;
       case "done":
         if (e.aborted) setLogs((prev) => [...prev, { level: "warn", message: "Audit stopped." }]);
+        setAnnouncement(
+          e.aborted
+            ? "Audit stopped."
+            : `Audit finished. ${e.summary.fail} need action, ${e.summary.warn} need review, ${e.summary.error} could not run, ${e.summary.pass} passed.`,
+        );
         break;
     }
   }
@@ -509,6 +529,17 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen">
+      {hydrated && !sample && view === "workspace" && (
+        <a
+          href="#results"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-lg focus:bg-gold focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-[#1a1406]"
+        >
+          Skip to results
+        </a>
+      )}
+      <div role="status" aria-live="polite" className="sr-only">
+        {announcement}
+      </div>
       <header className="sticky top-0 z-20 border-b border-line bg-obsidian/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-[1440px] items-center gap-4 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
@@ -574,7 +605,10 @@ export default function Dashboard() {
 
       {hydrated && !sample && view === "workspace" && (
       <main className="mx-auto grid max-w-[1440px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[400px_minmax(0,1fr)]">
-        <aside className="space-y-6 lg:sticky lg:top-[76px] lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto lg:pr-1 scroll-quiet">
+        <h1 data-screen-heading tabIndex={-1} className="sr-only">
+          Siren dashboard
+        </h1>
+        <aside aria-label="Setup" className="space-y-6 lg:sticky lg:top-[76px] lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto lg:pr-1 scroll-quiet">
           <TargetPanel
             value={target}
             onChange={(next) => {
@@ -673,7 +707,7 @@ export default function Dashboard() {
             onStop={() => abortRef.current?.abort()}
           />
 
-          <div ref={resultsRef} className="scroll-mt-20">
+          <div ref={resultsRef} id="results" tabIndex={-1} className="scroll-mt-20 outline-none">
           <Card
             title="Results"
             icon={<Radio className="size-4" />}

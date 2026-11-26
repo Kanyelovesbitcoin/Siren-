@@ -24,7 +24,7 @@ export function Card({
   return (
     <section className={cx("rounded-2xl border border-line bg-charcoal shadow-[0_1px_0_rgb(255_255_255/0.03)_inset]", className)}>
       {title && (
-        <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
+        <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line px-5 py-3.5">
           <h2 className="flex items-center gap-2 text-[13px] font-semibold tracking-wide text-ink uppercase">
             {icon && <span className="text-gold">{icon}</span>}
             {title}
@@ -49,14 +49,15 @@ export function Label({ children, hint, htmlFor }: { children: React.ReactNode; 
 }
 
 const fieldBase =
-  "rounded-lg border border-line bg-obsidian px-3 py-2 text-sm text-ink placeholder:text-muted/70 outline-none transition focus:border-gold/60 focus:ring-2 focus:ring-gold/15 disabled:opacity-50";
+  "rounded-lg border border-field bg-obsidian px-3 py-2 text-sm text-ink placeholder:text-muted transition focus:border-gold focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold disabled:opacity-50";
 
 export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }>(
   function Input({ className, invalid, ...props }, ref) {
     return (
       <input
         ref={ref}
-        className={cx(fieldBase, "w-full min-w-0", invalid && "border-fail/70 focus:border-fail focus:ring-fail/15", className)}
+        className={cx(fieldBase, "w-full min-w-0", invalid && "border-fail focus:border-fail", className)}
+        aria-invalid={invalid || undefined}
         {...props}
       />
     );
@@ -70,7 +71,8 @@ export function TextArea({
 }: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { invalid?: boolean }) {
   return (
     <textarea
-      className={cx(fieldBase, "w-full font-mono text-[12.5px] leading-relaxed scroll-quiet", invalid && "border-fail/70", className)}
+      className={cx(fieldBase, "w-full font-mono text-[12.5px] leading-relaxed scroll-quiet", invalid && "border-fail", className)}
+      aria-invalid={invalid || undefined}
       spellCheck={false}
       {...props}
     />
@@ -136,8 +138,8 @@ export function VerdictBadge({ verdict }: { verdict: Verdict | "running" }) {
 
 const SEVERITY_STYLE: Record<Severity, string> = {
   low: "text-ink-dim border-line-strong",
-  medium: "text-warn/90 border-warn/30",
-  high: "text-fail/90 border-fail/30",
+  medium: "text-warn border-warn/30",
+  high: "text-fail border-fail/40",
   critical: "text-fail border-fail/60 bg-fail/10",
 };
 
@@ -188,18 +190,24 @@ export function CopyButton({
 }) {
   const [copied, setCopied] = useState(false);
   return (
-    <Button
-      variant={variant}
-      className={className}
-      icon={copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-      onClick={async () => {
-        if (await copyText(text)) {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1800);
-        }
-      }}
-    >
-      {copied ? "Copied!" : label}
-    </Button>
+    <>
+      <Button
+        variant={variant}
+        className={className}
+        icon={copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+        onClick={async () => {
+          if (await copyText(text)) {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1800);
+          }
+        }}
+      >
+        {copied ? "Copied!" : label}
+      </Button>
+      {/* Tell screen reader users the copy worked; the visual change alone is silent. */}
+      <span role="status" className="sr-only">
+        {copied ? "Copied to clipboard" : ""}
+      </span>
+    </>
   );
 }

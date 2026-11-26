@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { EyeOff, FileWarning, FlaskConical, Gauge, Play, Square, VenetianMask, Wrench, ShieldAlert } from "lucide-react";
 import { Button, Card, Chip, SeverityChip, cx } from "./ui";
 import type { Playbook, PlaybookLoadError } from "@/lib/types";
@@ -42,6 +42,18 @@ export default function SuitePanel({
 }) {
   const [active, setActive] = useState<string | null>(null);
   const current = playbooks.find((p) => p.id === active) ?? playbooks[0];
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  // Tabs follow the standard keyboard pattern: one tab stop, arrow keys to move between categories.
+  function onTabKey(e: React.KeyboardEvent, index: number) {
+    const n = playbooks.length;
+    const next =
+      e.key === "ArrowRight" ? (index + 1) % n : e.key === "ArrowLeft" ? (index - 1 + n) % n : e.key === "Home" ? 0 : e.key === "End" ? n - 1 : -1;
+    if (next < 0) return;
+    e.preventDefault();
+    setActive(playbooks[next].id);
+    tabRefs.current[playbooks[next].id]?.focus();
+  }
 
   const toggle = (ids: string[], on: boolean) => {
     const next = new Set(selected);
@@ -96,8 +108,8 @@ export default function SuitePanel({
         </p>
       ) : (
         <>
-          <div role="tablist" aria-label="OWASP categories" className="-mx-1 mb-4 flex gap-1 overflow-x-auto px-1 pb-1 scroll-quiet">
-            {playbooks.map((p) => {
+          <div role="tablist" aria-label="Test categories" className="-mx-1 mb-4 flex gap-1 overflow-x-auto px-1 pb-1 scroll-quiet">
+            {playbooks.map((p, index) => {
               const Icon = ICONS[p.icon ?? ""] ?? FlaskConical;
               const sel = p.tests.filter((t) => selected.has(t.id)).length;
               const isActive = current?.id === p.id;
@@ -105,6 +117,13 @@ export default function SuitePanel({
                 <button
                   key={p.id}
                   role="tab"
+                  id={`suite-tab-${p.id}`}
+                  aria-controls="suite-panel"
+                  tabIndex={isActive ? 0 : -1}
+                  ref={(el) => {
+                    tabRefs.current[p.id] = el;
+                  }}
+                  onKeyDown={(e) => onTabKey(e, index)}
                   aria-selected={isActive}
                   onClick={() => setActive(p.id)}
                   className={cx(
@@ -125,7 +144,7 @@ export default function SuitePanel({
           </div>
 
           {current && (
-            <div className="rounded-xl border border-line bg-obsidian/60">
+            <div role="tabpanel" id="suite-panel" aria-labelledby={`suite-tab-${current.id}`} className="rounded-xl border border-line bg-obsidian/60">
               <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line p-4">
                 <div className="max-w-2xl">
                   <h3 className="text-[15px] font-semibold text-ink">{current.title}</h3>
@@ -186,6 +205,7 @@ export default function SuitePanel({
             className="px-5 py-2.5 text-[15px]"
             onClick={onRun}
             disabled={!canRun}
+            aria-describedby={blockReason ? "run-block-reason" : undefined}
             icon={<Play className="size-4 fill-current" />}
           >
             {attackerMode ? "Launch attack" : "Run audit"}
@@ -194,7 +214,14 @@ export default function SuitePanel({
         )}
         {running && (
           <div className="flex min-w-[200px] flex-1 items-center gap-3">
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-charcoal-3">
+            <div
+              role="progressbar"
+              aria-label="Audit progress"
+              aria-valuemin={0}
+              aria-valuemax={progress.total}
+              aria-valuenow={progress.done}
+              className="h-1.5 flex-1 overflow-hidden rounded-full bg-charcoal-3"
+            >
               <div className="gold-liquid h-full rounded-full transition-[width] duration-500" style={{ width: `${Math.max(pct, 4)}%` }} />
             </div>
             <span className="font-mono text-xs text-ink-dim">
@@ -203,7 +230,7 @@ export default function SuitePanel({
           </div>
         )}
         {!running && blockReason && (
-          <span className="flex items-center gap-1.5 text-xs text-warn">
+          <span id="run-block-reason" className="flex items-center gap-1.5 text-xs text-warn">
             <ShieldAlert className="size-3.5" />
             {blockReason}
           </span>

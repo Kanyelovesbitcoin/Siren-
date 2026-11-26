@@ -77,7 +77,7 @@ export default function StartScreen({
   return (
     <main className="mx-auto max-w-[1040px] px-4 py-10 sm:px-6 sm:py-14">
       <div className="mx-auto max-w-2xl text-center">
-        <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+        <h1 data-screen-heading tabIndex={-1} className="text-3xl font-semibold tracking-tight text-ink outline-none sm:text-4xl">
           Find the weak spots in your AI app <span className="gold-text">before someone else does</span>
         </h1>
         <p className="mt-4 text-[15px] leading-relaxed text-ink-dim">
@@ -167,11 +167,11 @@ export default function StartScreen({
           Siren only tests apps running on your own computer. It can&apos;t be pointed at anyone else&apos;s website.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-          <button className="text-xs text-gold/90 underline-offset-4 hover:underline" onClick={onSeeSample}>
+          <button className="min-h-9 text-xs text-gold underline underline-offset-4" onClick={onSeeSample}>
             See a sample report first
           </button>
           {hasResults && (
-            <button className="text-xs text-gold/90 underline-offset-4 hover:underline" onClick={onBackToResults}>
+            <button className="min-h-9 text-xs text-gold underline underline-offset-4" onClick={onBackToResults}>
               Back to my results
             </button>
           )}

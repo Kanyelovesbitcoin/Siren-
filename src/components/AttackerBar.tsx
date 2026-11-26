@@ -27,25 +27,27 @@ export default function AttackerBar({
         <button
           role="switch"
           aria-checked={on}
+          aria-labelledby="attacker-mode-label"
+          aria-describedby="attacker-mode-help"
           disabled={disabled}
           onClick={() => onChange({ ...value, enabled: !on })}
           className={cx(
             "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50",
-            on ? "gold-liquid" : "bg-charcoal-3 ring-1 ring-line-strong",
+            on ? "gold-liquid" : "bg-charcoal-3 ring-1 ring-field",
           )}
         >
           <span className={cx("inline-block size-4 rounded-full bg-white shadow transition", on ? "translate-x-6" : "translate-x-1")} />
         </button>
 
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-2 text-sm font-semibold text-ink">
+          <p id="attacker-mode-label" className="flex items-center gap-2 text-sm font-semibold text-ink">
             <Swords className={cx("size-4", on ? "text-gold" : "text-muted")} />
             Attacker mode
             <span className="rounded-md border border-gold/30 bg-gold/10 px-1.5 py-px text-[10px] font-medium tracking-wide text-gold/90 uppercase">
               adaptive
             </span>
           </p>
-          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+          <p id="attacker-mode-help" className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
             {on ? (
               <>
                 Your model rotates through 12 tactic families (role-play, pretexts, encoding, fake system messages…) per category,
