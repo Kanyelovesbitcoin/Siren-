@@ -1,0 +1,143 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { ClipboardPaste, FileCheck2, TriangleAlert } from "lucide-react";
+import { Button, CopyButton, TextArea } from "./ui";
+import { buildSetupPrompt } from "@/lib/setup-prompt";
+import { parseTargetConfig, sameTarget, targetLabel } from "@/lib/target-config";
+import type { TargetConfig } from "@/lib/types";
+
+interface Detected {
+  path: string;
+  found: boolean;
+  mtime?: number;
+  target?: TargetConfig;
+  error?: string;
+}
+
+const POLL_MS = 3000;
+
+function Step({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <li className="flex gap-3">
+      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-gold/40 font-mono text-[11px] text-gold">
+        {n}
+      </span>
+      <div className="min-w-0 flex-1 text-[13px] leading-relaxed text-ink-dim">{children}</div>
+    </li>
+  );
+}
+
+/**
+ * The no-jargon way to connect an app: copy a prompt, let Claude Code or Cursor work out the
+ * technical details, then paste the answer back (or let Siren pick up the file it saved).
+ */
+export default function ConnectHelper({
+  current,
+  onApply,
+  disabled,
+}: {
+  /** The setup currently in use, so a saved file that matches it isn't offered again. */
+  current: TargetConfig;
+  onApply: (target: TargetConfig) => void;
+  disabled?: boolean;
+}) {
+  const [detected, setDetected] = useState<Detected | null>(null);
+  const [pasted, setPasted] = useState("");
+  const [pasteError, setPasteError] = useState<string | null>(null);
+
+  // Watch for a setup file saved by the coding agent.
+  useEffect(() => {
+    let alive = true;
+    const check = async () => {
+      if (document.hidden) return;
+      try {
+        const res = await fetch("/api/config", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as Detected;
+        if (alive) setDetected(data);
+      } catch {
+        /* dashboard restarting: try again on the next tick */
+      }
+    };
+    check();
+    const timer = setInterval(check, POLL_MS);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  const prompt = useMemo(() => buildSetupPrompt(detected?.path), [detected?.path]);
+  const offer = detected?.found && detected.target && !sameTarget(detected.target, current) ? detected.target : null;
+
+  function applyPasted() {
+    const parsed = parseTargetConfig(pasted);
+    if (!parsed.ok || !parsed.target) {
+      setPasteError(parsed.error ?? "Siren couldn't read that setup block.");
+      return;
+    }
+    setPasteError(null);
+    setPasted("");
+    onApply(parsed.target);
+  }
+
+  return (
+    <div className="space-y-4">
+      {offer && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-pass/35 bg-pass/[0.07] p-3">
+          <FileCheck2 className="size-4 shrink-0 text-pass" />
+          <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-ink">
+            Found a saved setup for <span className="font-mono text-[12px] break-all text-pass">{targetLabel(offer.url)}</span>
+          </p>
+          <Button variant="gold" className="px-3 py-1.5 text-[13px]" onClick={() => onApply(offer)} disabled={disabled}>
+            Use this setup
+          </Button>
+        </div>
+      )}
+      {detected?.found && detected.error && (
+        <div className="flex gap-2 rounded-xl border border-warn/35 bg-warn/10 p-3 text-[12.5px] leading-relaxed text-warn">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          <p>
+            Siren found a saved setup file but couldn&apos;t use it: {detected.error}
+          </p>
+        </div>
+      )}
+
+      <ol className="space-y-3.5">
+        <Step n={1}>
+          <CopyButton text={prompt} label="Copy Setup Prompt for Claude Code / Cursor" variant="gold" className="w-full sm:w-auto" />
+        </Step>
+        <Step n={2}>
+          Open <span className="text-ink">your app&apos;s folder</span> in Claude Code or Cursor, paste the prompt and send it. It reads your
+          code and works out the technical details for you.
+        </Step>
+        <Step n={3}>
+          <p className="mb-2">
+            Paste what it gives you back here. If it says it saved the file, you can skip this: Siren finds it by itself.
+          </p>
+          <TextArea
+            rows={4}
+            aria-label="Setup block from your coding agent"
+            placeholder={'{\n  "url": "http://localhost:3000/api/chat",\n  ...\n}'}
+            value={pasted}
+            invalid={!!pasteError}
+            onChange={(e) => {
+              setPasted(e.target.value);
+              setPasteError(null);
+            }}
+            disabled={disabled}
+          />
+          {pasteError && (
+            <p role="alert" className="mt-1.5 text-xs leading-relaxed text-fail">
+              {pasteError}
+            </p>
+          )}
+          <Button className="mt-2" icon={<ClipboardPaste className="size-4" />} onClick={applyPasted} disabled={disabled || !pasted.trim()}>
+            Use this setup
+          </Button>
+        </Step>
+      </ol>
+    </div>
+  );
+}

@@ -22,7 +22,7 @@ git clone https://github.com/kanyelovesbitcoin/Siren-.git siren && cd siren && n
 npm run try
 ```
 
-`npm run try` starts Siren **and** a deliberately weak demo chatbot in the same terminal, waits until both are ready, and opens your browser with the demo bot already selected. Click **Run audit** and you'll see leaks, injections and runaway outputs get caught, plus a few passes where the bot holds up. Press `Ctrl+C` to stop both.
+`npm run try` starts Siren **and** a deliberately weak demo chatbot in the same terminal, waits until both are ready, and opens your browser on the start screen. Click **Try the Demo Bot** and you'll see leaks, injections and runaway outputs get caught, plus a few passes where the bot holds up. Press `Ctrl+C` to stop both.
 
 If a port is busy, Siren tells you in plain English which one and prints the command to use a different one (`npm run try -- --port 4242` or `npm run try -- --demo-port 3002`).
 
@@ -70,6 +70,39 @@ A judge model is optional. [Ollama](https://ollama.com) is the easiest if you wa
 ---
 
 ## Using Siren
+
+Siren opens on a start screen with two choices.
+
+### Try the Demo Bot
+
+One click runs the full audit against the bundled practice chatbot. It needs the demo bot to be running, which `npm run try` takes care of. If it isn't running, Siren tells you the command to start it.
+
+### Connect My App
+
+You don't need to know your app's "endpoint" or request format. Your coding agent works it out:
+
+1. Click **Copy Setup Prompt for Claude Code / Cursor**.
+2. Open your app's folder in Claude Code or Cursor, paste the prompt, and send it. The agent reads your code and replies with a small setup block (your app's local address, what it expects to receive, and where the reply is).
+3. Paste that block into Siren and click **Use this setup**. If the agent was able to save the block to `~/.siren/target.json`, Siren picks it up by itself and offers a **Use this setup** button, so there's nothing to paste.
+
+Siren then says hello to your app and shows you the reply. If it looks like your chatbot talking, hit **Run audit**.
+
+The setup block looks like this, in case you want to write one by hand:
+
+```json
+{
+  "url": "http://localhost:3000/api/chat",
+  "method": "POST",
+  "headers": [],
+  "body": { "messages": "{{messages}}" },
+  "responsePath": "choices[0].message.content",
+  "appContext": "A support assistant for Acme's widget store."
+}
+```
+
+### Advanced / Manual Setup
+
+Prefer to fill the fields in yourself? Open **Advanced / Manual Setup** (on the start screen, or in the **App to test** panel).
 
 1. **Target**: enter your endpoint (e.g. `http://localhost:3000/api/chat`), any headers (e.g. `Authorization: Bearer dev-token`), a JSON body template, and the path to the reply in the response.
    - `{{prompt}}` inserts the current attack turn (JSON-escaped).
@@ -232,11 +265,15 @@ src/
     api/playbooks          GET  — load + validate playbooks
     api/provider/models    POST — "Test connection", list judge models
     api/target/test        POST — single test message to your target
+    api/config             GET  — setup saved by your coding agent (~/.siren/target.json)
     api/audit              POST — run audit, streams NDJSON events
-  components/              Target, Judge, Suites, live ResultCard, UI kit
+  components/              Start screen, Target, Judge, Suites, live ResultCard, UI kit
   lib/
     safety.ts              Localhost lock + origin checks
     template.ts            {{prompt}}/{{messages}} rendering, JSON path extraction
+    setup-prompt.ts        Copy Setup Prompt builder (for Claude Code / Cursor)
+    target-config.ts       Reads the setup block the coding agent returns
+    config-file.ts         Finds the saved setup file
     providers.ts           Ollama / LM Studio / OpenAI-compatible clients
     runner.ts              Sequential audit engine (prompt, burst, oversize) + attacker mode
     attacker.ts            Adaptive red-team engine (plan → fire → assess loop)
@@ -257,6 +294,8 @@ Copy `.env.example` to `.env.local`:
 | `SIREN_ALLOWED_HOSTS` | Extra exact hostnames allowed as targets (comma-separated) |
 | `SIREN_TARGET_TIMEOUT_MS` | Per-request timeout to your app (default 30000) |
 | `SIREN_PORT` | Default dashboard port for the CLI |
+| `SIREN_DEMO_PORT` | Default demo bot port (default 3001) |
+| `SIREN_CONFIG_FILE` | Where Siren looks for a saved setup (default `~/.siren/target.json`) |
 
 ---
 

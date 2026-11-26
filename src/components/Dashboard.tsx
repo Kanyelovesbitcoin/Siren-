@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, Eraser, Lock, Radio, RefreshCw, ShieldCheck, TriangleAlert, Info } from "lucide-react";
+import { CircleCheck, Download, Eraser, House, LoaderCircle, Lock, Play, Radio, RefreshCw, ShieldCheck, TriangleAlert, Info, X } from "lucide-react";
+import StartScreen, { type DemoStatus } from "./StartScreen";
 import TargetPanel from "./TargetPanel";
 import ProviderPanel from "./ProviderPanel";
 import SuitePanel from "./SuitePanel";
@@ -9,6 +10,7 @@ import AttackerBar from "./AttackerBar";
 import ResultCard, { type LiveTest } from "./ResultCard";
 import { Button, Card, cx } from "./ui";
 import { checkTargetUrl } from "@/lib/safety";
+import { sameTarget, targetLabel } from "@/lib/target-config";
 import { validateTemplate } from "@/lib/template";
 import { PROVIDER_PRESETS } from "@/lib/providers";
 import type { AttackConfig, AuditEvent, Playbook, PlaybookLoadError, ProviderConfig, TargetConfig, TestResult } from "@/lib/types";
@@ -62,7 +64,39 @@ interface LogLine {
   message: string;
 }
 
-function loadSaved(): { target: TargetConfig; judge: ProviderConfig; selected?: string[]; attack?: AttackConfig } | null {
+/** "start" = the two beginner cards · "workspace" = the full dashboard. */
+type View = "start" | "workspace";
+
+/** Result of saying hello to a freshly connected app. */
+interface Connection {
+  status: "checking" | "ok" | "fail";
+  label: string;
+  reply?: string;
+  error?: string;
+}
+
+interface Ping {
+  ok: boolean;
+  status?: number | null;
+  reply?: string;
+  error?: string;
+}
+
+/** One friendly message to the app, through the same route as "Send test message". */
+async function pingTarget(target: TargetConfig): Promise<Ping> {
+  try {
+    const res = await fetch("/api/target/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ target }),
+    });
+    return (await res.json()) as Ping;
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+function loadSaved(): { target: TargetConfig; judge: ProviderConfig; selected?: string[]; attack?: AttackConfig; view?: View } | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
@@ -110,6 +144,11 @@ export default function Dashboard() {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [view, setView] = useState<View>("start");
+  const [demoStatus, setDemoStatus] = useState<DemoStatus>("idle");
+  const [demoReady, setDemoReady] = useState(false);
+  const [demoPort, setDemoPort] = useState(DEMO_PORT);
+  const [conn, setConn] = useState<Connection | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const playbooksRef = useRef<Playbook[]>([]);
   const rerunRef = useRef(false);
@@ -125,15 +164,20 @@ export default function Dashboard() {
     if (saved?.judge) setJudge({ ...DEFAULT_JUDGE, ...saved.judge, apiKey: "" });
     if (saved?.attack) setAttack({ ...DEFAULT_ATTACK, ...saved.attack });
     if (saved?.selected) setSelected(new Set(saved.selected));
+    // Settings saved before the start screen existed belong to someone who already knows the dashboard.
+    if (saved) setView(saved.view === "start" ? "start" : "workspace");
 
     // Launched with `npm run try`: the demo bot is already running, so pre-select it with
-    // rules-only grading and every test ticked. "Run audit" then works on the first click.
-    const demoPort = demoPortFromUrl();
-    if (demoPort !== null) {
-      setTarget(demoTarget(demoPort));
+    // rules-only grading and every test ticked, and show the start screen with the demo ready.
+    const port = demoPortFromUrl();
+    if (port !== null) {
+      setDemoPort(port);
+      setDemoReady(true);
+      setTarget(demoTarget(port));
       setJudge((j) => ({ ...j, mode: "heuristic" }));
       setAttack((a) => ({ ...a, enabled: false }));
       setSelected(new Set()); // empty → everything gets selected once the playbooks load
+      setView("start");
       window.history.replaceState(null, "", window.location.pathname);
     }
     setHydrated(true);
@@ -144,11 +188,11 @@ export default function Dashboard() {
     try {
       const { apiKey: _drop, ...judgeSafe } = judge;
       void _drop;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ target, judge: judgeSafe, attack, selected: [...selected] }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ target, judge: judgeSafe, attack, selected: [...selected], view }));
     } catch {
       /* storage unavailable */
     }
-  }, [hydrated, target, judge, attack, selected]);
+  }, [hydrated, target, judge, attack, selected, view]);
 
   const refreshPlaybooks = useCallback(async () => {
     try {
@@ -180,6 +224,7 @@ export default function Dashboard() {
   const targetCheck = useMemo(() => checkTargetUrl(target.url), [target.url]);
   const templateError = useMemo(() => validateTemplate(target.bodyTemplate), [target.bodyTemplate]);
   const hasModel = judge.mode === "judge" && !!judge.model.trim();
+  const isDemo = sameTarget(target, demoTarget(demoPort));
   const blockReason = targetCheck.external
     ? "External target blocked by the localhost lock."
     : !targetCheck.ok
@@ -243,12 +288,27 @@ export default function Dashboard() {
     }
   }
 
-  /** POST one audit request and feed its NDJSON events into the dashboard. */
-  async function streamAudit(testIds: string[], attackCfg: AttackConfig, signal: AbortSignal) {
+  /**
+   * POST one audit request and feed its NDJSON events into the dashboard. `targetCfg` and
+   * `judgeCfg` default to the current settings; the demo card passes its own so it can start
+   * in the same click that changes them.
+   */
+  async function streamAudit(
+    testIds: string[],
+    attackCfg: AttackConfig,
+    signal: AbortSignal,
+    targetCfg: TargetConfig = target,
+    judgeCfg: ProviderConfig = judge,
+  ) {
     const res = await fetch("/api/audit", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ target: { ...target, canaries: (target.canaries ?? []).filter(Boolean) }, judge, testIds, attack: attackCfg }),
+      body: JSON.stringify({
+        target: { ...targetCfg, canaries: (targetCfg.canaries ?? []).filter(Boolean) },
+        judge: judgeCfg,
+        testIds,
+        attack: attackCfg,
+      }),
       signal,
     });
     if (!res.ok || !res.body) {
@@ -271,11 +331,18 @@ export default function Dashboard() {
     }
   }
 
-  async function runAudit() {
-    if (blockReason) return;
+  async function runAudit(demo?: { target: TargetConfig; judge: ProviderConfig; attack: AttackConfig }) {
+    if (!demo && blockReason) return;
     // Pick up any playbook edits made since the page loaded.
     const pbs = await refreshPlaybooks();
-    const ordered = pbs.flatMap((p) => p.tests.map((t) => t.id)).filter((id) => selected.has(id));
+    const allIds = pbs.flatMap((p) => p.tests.map((t) => t.id));
+    // The demo always runs every test; otherwise run what's ticked.
+    const ordered = demo ? allIds : allIds.filter((id) => selected.has(id));
+    if (demo) setSelected(new Set(allIds));
+    if (!ordered.length) {
+      setRunError("Siren couldn't find any tests to run. Check the playbooks folder.");
+      return;
+    }
     rerunRef.current = false;
     setLive([]);
     setLogs([]);
@@ -285,13 +352,59 @@ export default function Dashboard() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      await streamAudit(ordered, attack, controller.signal);
+      await streamAudit(ordered, demo?.attack ?? attack, controller.signal, demo?.target, demo?.judge);
     } catch (e) {
       if ((e as Error).name !== "AbortError") setRunError((e as Error).message);
     } finally {
       setRunning(false);
       abortRef.current = null;
     }
+  }
+
+  /** "Try the Demo Bot": one click from the start screen to a running audit. */
+  async function runDemo() {
+    if (running || demoStatus === "checking") return;
+    const demo = demoTarget(demoPort);
+    setDemoStatus("checking");
+    const ping = await pingTarget(demo);
+    if (!ping.ok) {
+      setDemoStatus("missing");
+      return;
+    }
+    setDemoStatus("idle");
+    // Rules-only grading, so the demo never depends on an AI model being installed.
+    const demoJudge: ProviderConfig = { ...judge, mode: "heuristic" };
+    const demoAttack: AttackConfig = { ...attack, enabled: false };
+    setTarget(demo);
+    setJudge(demoJudge);
+    setAttack(demoAttack);
+    setConn(null);
+    setView("workspace");
+    await runAudit({ target: demo, judge: demoJudge, attack: demoAttack });
+  }
+
+  /** Say hello to the app so the user knows the setup works before running a full audit. */
+  async function checkConnection(t: TargetConfig) {
+    const label = targetLabel(t.url);
+    setConn({ status: "checking", label });
+    const ping = await pingTarget(t);
+    setConn(
+      ping.ok
+        ? { status: "ok", label, reply: ping.reply }
+        : { status: "fail", label, error: ping.error ?? (ping.status ? `Your app answered with an error (HTTP ${ping.status}).` : "No reply came back.") },
+    );
+  }
+
+  /** A setup arrived from the Copy Setup Prompt flow (pasted, or picked up from the saved file). */
+  async function applyConfig(t: TargetConfig) {
+    setTarget(t);
+    setView("workspace");
+    // Earlier results belong to a different app.
+    setLive([]);
+    setLogs([]);
+    setRunError(null);
+    setProgress({ done: 0, total: 0 });
+    await checkConnection(t);
   }
 
   /**
@@ -354,10 +467,15 @@ export default function Dashboard() {
               <p className="text-[17px] font-semibold tracking-tight">
                 <span className="gold-text">Siren</span>
               </p>
-              <p className="text-[11px] text-muted">Local-first AI security bench · OWASP LLM Top 10</p>
+              <p className="text-[11px] text-muted">Security testing for your AI app · runs on your computer</p>
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2 text-[11px]">
+            {hydrated && view === "workspace" && (
+              <Button variant="ghost" className="px-2 py-1 text-xs" icon={<House className="size-3.5" />} onClick={() => setView("start")} disabled={running}>
+                Start screen
+              </Button>
+            )}
             <span
               className={cx(
                 "hidden items-center gap-1.5 rounded-full border px-2.5 py-1 sm:inline-flex",
@@ -375,13 +493,99 @@ export default function Dashboard() {
         </div>
       </header>
 
+      {hydrated && view === "start" && (
+        <StartScreen
+          demoStatus={demoStatus}
+          demoReady={demoReady}
+          onTryDemo={runDemo}
+          target={target}
+          onTargetChange={setTarget}
+          onApplyConfig={applyConfig}
+          onManualContinue={() => {
+            setView("workspace");
+            void checkConnection(target);
+          }}
+          manualReady={targetCheck.ok && !templateError}
+          hasResults={live.length > 0}
+          onBackToResults={() => setView("workspace")}
+        />
+      )}
+
+      {hydrated && view === "workspace" && (
       <main className="mx-auto grid max-w-[1440px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[400px_minmax(0,1fr)]">
         <aside className="space-y-6 lg:sticky lg:top-[76px] lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto lg:pr-1 scroll-quiet">
-          <TargetPanel value={target} onChange={setTarget} disabled={running} />
+          <TargetPanel
+            value={target}
+            onChange={(next) => {
+              setTarget(next);
+              setConn(null);
+            }}
+            onApplyConfig={applyConfig}
+            isDemo={isDemo}
+            disabled={running}
+          />
           <ProviderPanel value={judge} onChange={setJudge} disabled={running} />
         </aside>
 
         <div className="min-w-0 space-y-6">
+          {conn && (
+            <div
+              role="status"
+              className={cx(
+                "flex flex-wrap items-start gap-3 rounded-2xl border p-4 text-[13px] leading-relaxed",
+                conn.status === "ok" ? "border-pass/35 bg-pass/[0.07]" : conn.status === "fail" ? "border-fail/40 bg-fail/10" : "border-line bg-charcoal",
+              )}
+            >
+              {conn.status === "checking" && <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin text-gold" />}
+              {conn.status === "ok" && <CircleCheck className="mt-0.5 size-4 shrink-0 text-pass" />}
+              {conn.status === "fail" && <TriangleAlert className="mt-0.5 size-4 shrink-0 text-fail" />}
+              <div className="min-w-0 flex-1">
+                {conn.status === "checking" && (
+                  <p className="text-ink-dim">
+                    Saying hello to your app at <span className="font-mono text-[12px] text-ink">{conn.label}</span>…
+                  </p>
+                )}
+                {conn.status === "ok" && (
+                  <>
+                    <p className="font-semibold text-ink">
+                      Connected to <span className="font-mono text-[12px] font-normal">{conn.label}</span>
+                    </p>
+                    <p className="mt-1 text-ink-dim">
+                      Siren said hello and your app replied:{" "}
+                      <span className="text-ink">&ldquo;{(conn.reply || "(empty reply)").slice(0, 220)}{(conn.reply ?? "").length > 220 ? "…" : ""}&rdquo;</span>
+                    </p>
+                    <p className="mt-1 text-muted">If that looks like your chatbot talking, you&apos;re ready.</p>
+                  </>
+                )}
+                {conn.status === "fail" && (
+                  <>
+                    <p className="font-semibold text-fail">
+                      Siren couldn&apos;t reach your app at <span className="font-mono text-[12px] font-normal">{conn.label}</span>
+                    </p>
+                    <p className="mt-1 text-ink-dim">{conn.error}</p>
+                    <p className="mt-1 text-muted">
+                      Check that your app is running on this computer, then try again. Wrong address? Open{" "}
+                      <span className="text-ink-dim">Advanced / Manual Setup</span> on the left.
+                    </p>
+                  </>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {conn.status === "ok" && !running && live.length === 0 && (
+                  <Button variant="gold" icon={<Play className="size-4 fill-current" />} onClick={() => runAudit()} disabled={!!blockReason}>
+                    Run audit
+                  </Button>
+                )}
+                {conn.status === "fail" && <Button onClick={() => checkConnection(target)}>Try again</Button>}
+                {conn.status !== "checking" && (
+                  <button aria-label="Dismiss" className="p-1 text-muted hover:text-ink" onClick={() => setConn(null)}>
+                    <X className="size-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           <AttackerBar value={attack} onChange={setAttack} modelName={hasModel ? judge.model : null} disabled={running} />
 
           <SuitePanel
@@ -395,12 +599,12 @@ export default function Dashboard() {
             canRun={!blockReason && !running}
             blockReason={blockReason}
             progress={progress}
-            onRun={runAudit}
+            onRun={() => runAudit()}
             onStop={() => abortRef.current?.abort()}
           />
 
           <Card
-            title="Live transcript"
+            title="Results"
             icon={<Radio className="size-4" />}
             action={
               live.length > 0 && (
@@ -464,9 +668,9 @@ export default function Dashboard() {
 
             {failedIds.length > 0 && compared.length === 0 && !running && (
               <div className="mb-4 rounded-xl border border-line bg-charcoal-2/60 px-4 py-3 text-[12.5px] leading-relaxed text-ink-dim">
-                <span className="font-semibold text-ink">Harden &amp; re-attack:</span> copy a fix prompt below, apply it in your IDE,
-                restart your app, then hit <span className="text-gold">Re-attack failed</span> to see what you fixed. Using the demo bot? Stop it
-                and run <span className="font-mono text-ink">npm run demo:hardened</span>.
+                <span className="font-semibold text-ink">Fix and re-test:</span> copy a fix prompt below, paste it into Claude Code or
+                Cursor, restart your app, then hit <span className="text-gold">Re-attack failed</span> to see what you fixed.
+                {isDemo && " (The demo bot is only for practice. The README shows how to run its fixed version.)"}
               </div>
             )}
 
@@ -497,17 +701,13 @@ export default function Dashboard() {
             {live.length === 0 ? (
               <div className="flex flex-col items-center rounded-xl border border-dashed border-line-strong px-6 py-14 text-center">
                 <ShieldCheck className="mb-3 size-8 text-gold/70" />
-                <p className="text-sm font-medium text-ink">No audit yet</p>
+                <p className="text-sm font-medium text-ink">No results yet</p>
                 <p className="mt-1 max-w-md text-[13px] leading-relaxed text-muted">
-                  Point Siren at your local AI endpoint, pick a judge model, then hit <span className="text-gold">Run audit</span>. Each test
-                  shows up here side-by-side with your app&apos;s reply.
+                  Hit <span className="text-gold">Run audit</span> above. Each test shows up here next to your app&apos;s reply, with a
+                  plain-English explanation and a fix for anything that goes wrong.
                 </p>
-                <button
-                  className="mt-4 text-xs text-gold/90 underline-offset-4 hover:underline"
-                  onClick={() => setTarget(demoTarget())}
-                  disabled={running}
-                >
-                  No app handy? Use the bundled demo bot (start it with: npm run try)
+                <button className="mt-4 text-xs text-gold/90 underline-offset-4 hover:underline" onClick={() => setView("start")} disabled={running}>
+                  Back to the start screen
                 </button>
               </div>
             ) : (
@@ -521,6 +721,7 @@ export default function Dashboard() {
           </Card>
         </div>
       </main>
+      )}
     </div>
   );
 }

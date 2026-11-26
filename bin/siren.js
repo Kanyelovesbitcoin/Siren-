@@ -286,7 +286,7 @@ ${args.demo ? `\n  ${dim("Starting the demo bot and the dashboard. This takes a 
   ${args.open ? "Your browser should open by itself. If it doesn't, open this link:" : "Open this link in your browser:"}
     ${gold(openUrl)}
 
-  The demo bot is already selected. Click ${gold("Run audit")} to watch Siren test it.
+  Click ${gold("Try the Demo Bot")} to watch Siren test it.
   ${dim("Press Ctrl+C in this window to stop everything.")}
 `);
   }
